@@ -2,9 +2,8 @@
 
 import { Resend } from "resend"
 
-// Initialize Resend with your API key
-// In production, use environment variable: process.env.RESEND_API_KEY
-const resend = new Resend("re_yourResendApiKey")
+const API_KEY = process.env.RESEND_API_KEY
+const resend = new Resend(API_KEY);
 
 export async function subscribeUser(email: string) {
   try {
@@ -25,10 +24,10 @@ export async function subscribeUser(email: string) {
 async function sendConfirmationEmail(email: string) {
   try {
     await resend.emails.send({
-      from: "ToolkitForSEO <noreply@yourdomain.com>",
-      to: email,
-      subject: "Welcome to ToolkitForSEO!",
-      html: `
+			from: 'ToolkitForSEO <noreply@toolkitforseo.com>',
+			to: email,
+			subject: 'Welcome to ToolkitForSEO!',
+			html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
           <div style="text-align: center; margin-bottom: 20px;">
             <h1 style="color: #10b981; margin-bottom: 5px;">ToolkitForSEO</h1>
@@ -56,7 +55,7 @@ async function sendConfirmationEmail(email: string) {
           </div>
         </div>
       `,
-    })
+		});
   } catch (error) {
     console.error("Error sending confirmation email:", error)
     throw new Error("Failed to send confirmation email")
