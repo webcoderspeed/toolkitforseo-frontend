@@ -268,7 +268,7 @@ export default function LandingPage() {
 								<div className='absolute -inset-1 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg blur opacity-25'></div>
 								<div className='relative bg-white rounded-lg shadow-xl overflow-hidden'>
 									<div className='p-6 sm:p-10'>
-										<div className='grid grid-cols-2 gap-4'>
+										<div className='grid sm:grid-cols-2 gap-4'>
 											<FeatureCard
 												icon={<FileText className='h-6 w-6 text-emerald-600' />}
 												title='Content Tools'
@@ -320,7 +320,7 @@ export default function LandingPage() {
 							defaultValue='text'
 							className='w-full'
 						>
-							<TabsList className='grid grid-cols-4 mb-8'>
+							<TabsList className='grid sm:grid-cols-4 mb-28 sm:mb-8'>
 								<TabsTrigger
 									value='text'
 									className='data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-800'
