@@ -24,6 +24,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/store";
 import {
+  IPlagiarismCheckerDetectionModelType,
   PlagiarismCheckerData,
   PlagiarismCheckerResponse,
 } from "@/store/types";
@@ -31,7 +32,8 @@ import {
 export default function PlagiarismChecker() {
   const { toast } = useToast();
   const [text, setText] = useState("");
-  const [model, setModel] = useState("standard");
+  const [detectionModel, setDetectionModel] =
+    useState<IPlagiarismCheckerDetectionModelType>("Standard");
   const [isChecking, setIsChecking] = useState(false);
   const [results, setResults] = useState<null | PlagiarismCheckerData>(null);
 
@@ -52,7 +54,9 @@ export default function PlagiarismChecker() {
         `text-and-content/plagiarism-check`,
         {
           text,
-          model: "gemini-2.0-flash",
+          settings: {
+            detection_model: detectionModel,
+          }, 
         },
         {
           headers: {
@@ -158,22 +162,27 @@ export default function PlagiarismChecker() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Detection Model</label>
-                <Select value={model} onValueChange={setModel}>
+                <Select
+                  value={detectionModel}
+                  onValueChange={(v: IPlagiarismCheckerDetectionModelType) =>
+                    setDetectionModel(v)
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="academic">Academic</SelectItem>
-                    <SelectItem value="thorough">Thorough</SelectItem>
+                    <SelectItem value="Standard">Standard</SelectItem>
+                    <SelectItem value="Academic">Academic</SelectItem>
+                    <SelectItem value="Thorough">Thorough</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  {model === "standard" &&
+                  {detectionModel === "Standard" &&
                     "Standard detection for general content"}
-                  {model === "academic" &&
+                  {detectionModel === "Academic" &&
                     "Enhanced detection for academic papers"}
-                  {model === "thorough" &&
+                  {detectionModel === "Thorough" &&
                     "Deep analysis with highest accuracy"}
                 </p>
               </div>
