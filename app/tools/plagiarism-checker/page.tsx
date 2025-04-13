@@ -66,6 +66,13 @@ export default function PlagiarismChecker() {
       );
 
       setResults(data.data);
+
+
+  toast({
+    title: "Plagiarism check completed",
+    description: "Results have been successfully retrieved.",
+    variant: "default", 
+  });
     } catch (error) {
       console.error("Failed to check plagiarism:", error);
       toast({
@@ -89,7 +96,8 @@ export default function PlagiarismChecker() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="max-w-4xl mx-auto"
+      className="mx-auto"
+
     >
       <div className="flex items-center gap-3 mb-6">
         <div className="bg-emerald-100 p-3 rounded-lg text-emerald-600">
