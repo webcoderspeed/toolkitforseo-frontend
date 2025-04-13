@@ -56,7 +56,7 @@ export default function PlagiarismChecker() {
           text,
           settings: {
             detection_model: detectionModel,
-          }, 
+          },
         },
         {
           headers: {
