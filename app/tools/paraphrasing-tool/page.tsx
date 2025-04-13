@@ -27,7 +27,7 @@ import { api } from "@/store";
 import {
   IParaphrasedModeType,
   ParaphaseResponse,
-} from "@/store/types/paraphrase.types";
+} from "@/store/types";
 
 export default function ParaphrasingTool() {
   const { toast } = useToast();

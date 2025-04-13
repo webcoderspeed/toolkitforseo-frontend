@@ -1,27 +1,30 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { motion } from "framer-motion"
-import { Check, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { useToast } from "@/components/ui/use-toast"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Check, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { GrammarCheckData, GrammarCheckResponse } from "@/store/types";
+import { api } from "@/store";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function GrammarChecker() {
-  const { toast } = useToast()
-  const [text, setText] = useState("")
-  const [isChecking, setIsChecking] = useState(false)
-  const [results, setResults] = useState<null | {
-    errors: {
-      type: "grammar" | "spelling" | "punctuation"
-      text: string
-      suggestion: string
-      position: [number, number]
-    }[]
-    score: number
-  }>(null)
+  const { toast } = useToast();
+  const [text, setText] = useState("");
+  const [isChecking, setIsChecking] = useState(false);
+  const [results, setResults] = useState<null | GrammarCheckData>(null);
+  const [activeTab, setActiveTab] = useState("original");
 
   const handleCheck = async () => {
     if (!text.trim()) {
@@ -29,67 +32,62 @@ export default function GrammarChecker() {
         title: "Empty text",
         description: "Please enter some text to check.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    setIsChecking(true)
+    setIsChecking(true);
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock grammar check results
-      const mockErrors = [
+    try {
+      const { data } = await api.post<GrammarCheckResponse>(
+        `text-and-content/grammar-check`,
         {
-          type: "grammar" as const,
-          text: text.split(" ").slice(0, 3).join(" "),
-          suggestion: "Suggested correction",
-          position: [0, text.split(" ").slice(0, 3).join(" ").length],
+          text,
         },
         {
-          type: "spelling" as const,
-          text: text.split(" ").slice(5, 6).join(" "),
-          suggestion: "Correct spelling",
-          position: [text.split(" ").slice(0, 5).join(" ").length + 1, text.split(" ").slice(0, 6).join(" ").length],
-        },
-        {
-          type: "punctuation" as const,
-          text: text.split(" ").slice(8, 10).join(" "),
-          suggestion: "Correct punctuation",
-          position: [text.split(" ").slice(0, 8).join(" ").length + 1, text.split(" ").slice(0, 10).join(" ").length],
-        },
-      ]
+          headers: {
+            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
+          },
+        }
+      );
 
-      setResults({
-        errors: mockErrors,
-        score: 85,
-      })
-
-      setIsChecking(false)
-
+      setResults(data.data);
+      setActiveTab("corrected");
       toast({
-        title: "Grammar check complete",
-        description: `Found ${mockErrors.length} issues in your text.`,
-      })
-    }, 3000)
-  }
+        title: "Grammar checked successfully",
+        description: "Your text has been checked successfully.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to check grammar", error);
+      toast({
+        title: "Failed to paraphrase text",
+        description:
+          "An error occurred while checking the grammar of text. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChecking(false);
+    }
+  };
 
   const handleClear = () => {
-    setText("")
-    setResults(null)
-  }
+    setText("");
+    setResults(null);
+  };
 
   const getErrorTypeColor = (type: "grammar" | "spelling" | "punctuation") => {
     switch (type) {
       case "grammar":
-        return "bg-amber-100 text-amber-800 border-amber-200"
+        return "bg-amber-100 text-amber-800 border-amber-200";
       case "spelling":
-        return "bg-red-100 text-red-800 border-red-200"
+        return "bg-red-100 text-red-800 border-red-200";
       case "punctuation":
-        return "bg-blue-100 text-blue-800 border-blue-200"
+        return "bg-blue-100 text-blue-800 border-blue-200";
       default:
-        return ""
+        return "";
     }
-  }
+  };
 
   return (
     <motion.div
@@ -103,8 +101,12 @@ export default function GrammarChecker() {
           <Check className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Free Grammar Checker</h1>
-          <p className="text-slate-600">Check your text for grammar, spelling, and punctuation errors</p>
+          <h1 className="text-3xl font-bold text-slate-900">
+            Free Grammar Checker
+          </h1>
+          <p className="text-slate-600">
+            Check your text for grammar, spelling, and punctuation errors
+          </p>
         </div>
       </div>
 
@@ -112,20 +114,53 @@ export default function GrammarChecker() {
         <Card>
           <CardHeader>
             <CardTitle>Enter your text</CardTitle>
-            <CardDescription>Paste your content below to check for grammar errors</CardDescription>
+            <CardDescription>
+              Paste your content below to check for grammar errors
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <Textarea
-              placeholder="Enter or paste your text here..."
-              className="min-h-[200px] resize-none"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
+              <TabsList className="grid grid-cols-2 mb-4">
+                <TabsTrigger value="original">Original</TabsTrigger>
+                <TabsTrigger
+                  value="corrected"
+                  disabled={!results?.corrected_text}
+                >
+                  Corrected
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="original" className="mt-0">
+                <Textarea
+                  placeholder="Enter or paste your text here..."
+                  className="min-h-[300px] resize-none"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                />
+              </TabsContent>
+              <TabsContent value="corrected" className="mt-0">
+                <Textarea
+                  placeholder="Corrected content will appear here..."
+                  className="min-h-[300px] resize-none"
+                  value={results?.corrected_text}
+                  readOnly
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
           <CardFooter className="flex justify-between">
-            <div className="text-sm text-slate-500">{text.length} characters</div>
+            <div className="text-sm text-slate-500">
+              {text.length} characters
+            </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleClear} disabled={isChecking}>
+              <Button
+                variant="outline"
+                onClick={handleClear}
+                disabled={isChecking}
+              >
                 Clear
               </Button>
               <Button
@@ -159,32 +194,52 @@ export default function GrammarChecker() {
                   <CardDescription>Grammar check results</CardDescription>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-emerald-600">{results.score}/100</div>
+                  <div className="text-2xl font-bold text-emerald-600">
+                    {results.score}/100
+                  </div>
                   <div className="text-xs text-slate-500">Grammar Score</div>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex gap-2">
-                    <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
+                    <Badge
+                      variant="outline"
+                      className="bg-amber-100 text-amber-800 border-amber-200"
+                    >
                       Grammar
                     </Badge>
-                    <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+                    <Badge
+                      variant="outline"
+                      className="bg-red-100 text-red-800 border-red-200"
+                    >
                       Spelling
                     </Badge>
-                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-100 text-blue-800 border-blue-200"
+                    >
                       Punctuation
                     </Badge>
                   </div>
 
                   {results.errors.length > 0 ? (
                     <div className="space-y-3">
-                      <h3 className="font-medium">Found {results.errors.length} issues:</h3>
+                      <h3 className="font-medium">
+                        Found {results.errors.length} issues:
+                      </h3>
                       {results.errors.map((error, index) => (
-                        <div key={index} className="border rounded-md p-3 bg-slate-50">
+                        <div
+                          key={index}
+                          className="border rounded-md p-3 bg-slate-50"
+                        >
                           <div className="flex justify-between items-start mb-2">
-                            <Badge variant="outline" className={getErrorTypeColor(error.type)}>
-                              {error.type.charAt(0).toUpperCase() + error.type.slice(1)}
+                            <Badge
+                              variant="outline"
+                              className={getErrorTypeColor(error.type)}
+                            >
+                              {error.type.charAt(0).toUpperCase() +
+                                error.type.slice(1)}
                             </Badge>
                           </div>
                           <div className="mb-2">
@@ -194,7 +249,9 @@ export default function GrammarChecker() {
                             </div>
                           </div>
                           <div>
-                            <div className="text-sm font-medium">Suggestion:</div>
+                            <div className="text-sm font-medium">
+                              Suggestion:
+                            </div>
                             <div className="text-sm bg-white p-2 rounded border border-emerald-200 text-emerald-700 mt-1">
                               &quot;{error.suggestion}&quot;
                             </div>
@@ -216,5 +273,5 @@ export default function GrammarChecker() {
         )}
       </div>
     </motion.div>
-  )
+  );
 }
