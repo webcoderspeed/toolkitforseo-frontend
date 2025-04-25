@@ -24,6 +24,7 @@ export default function RootLayout({
 				href='/favicon.ico'
 				type='image/x-icon'
 			/>
+			<script src="https://analytics.ahrefs.com/analytics.js" data-key="voEcCH/3yyMtWQq+My7DCg" async></script>
 			<body
 				className={inter.className}
 				suppressHydrationWarning
