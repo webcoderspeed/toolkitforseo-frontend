@@ -1,29 +1,26 @@
-"use server"
+'use server';
 
-import { Resend } from "resend"
+import { Resend } from 'resend';
 
-const API_KEY = process.env.RESEND_API_KEY
+const API_KEY = process.env.RESEND_API_KEY;
 const resend = new Resend(API_KEY);
 
 export async function subscribeUser(email: string) {
-  try {
-    // Store the email in your database
-    // This is a placeholder - you would implement your database logic here
-    console.log(`Subscribing user: ${email}`)
+	try {
+		console.log(`Subscribing user: ${email}`);
 
-    // Send confirmation email
-    await sendConfirmationEmail(email)
+		await sendConfirmationEmail(email);
 
-    return { success: true }
-  } catch (error) {
-    console.error("Error subscribing user:", error)
-    throw new Error("Failed to subscribe")
-  }
+		return { success: true };
+	} catch (error) {
+		console.error('Error subscribing user:', error);
+		throw new Error('Failed to subscribe');
+	}
 }
 
 async function sendConfirmationEmail(email: string) {
-  try {
-    await resend.emails.send({
+	try {
+		await resend.emails.send({
 			from: 'ToolkitForSEO <noreply@toolkitforseo.com>',
 			to: email,
 			subject: 'Welcome to ToolkitForSEO!',
@@ -56,19 +53,19 @@ async function sendConfirmationEmail(email: string) {
         </div>
       `,
 		});
-  } catch (error) {
-    console.error("Error sending confirmation email:", error)
-    throw new Error("Failed to send confirmation email")
-  }
+	} catch (error) {
+		console.error('Error sending confirmation email:', error);
+		throw new Error('Failed to send confirmation email');
+	}
 }
 
 export async function sendLaunchEmail(email: string) {
-  try {
-    await resend.emails.send({
-      from: "ToolkitForSEO <noreply@yourdomain.com>",
-      to: email,
-      subject: "ToolkitForSEO is now LIVE!",
-      html: `
+	try {
+		await resend.emails.send({
+			from: 'ToolkitForSEO <noreply@yourdomain.com>',
+			to: email,
+			subject: 'ToolkitForSEO is now LIVE!',
+			html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
           <div style="text-align: center; margin-bottom: 20px;">
             <h1 style="color: #10b981; margin-bottom: 5px;">ToolkitForSEO</h1>
@@ -101,9 +98,9 @@ export async function sendLaunchEmail(email: string) {
           </div>
         </div>
       `,
-    })
-  } catch (error) {
-    console.error("Error sending launch email:", error)
-    throw new Error("Failed to send launch email")
-  }
+		});
+	} catch (error) {
+		console.error('Error sending launch email:', error);
+		throw new Error('Failed to send launch email');
+	}
 }
