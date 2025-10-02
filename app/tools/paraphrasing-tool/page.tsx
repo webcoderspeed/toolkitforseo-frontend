@@ -27,13 +27,15 @@ import { api } from "@/store";
 import {
   IParaphrasedModeType,
   ParaphaseResponse,
+  ParaphraseResult,
+  ParaphraseStyle,
 } from "@/store/types";
 
 export default function ParaphrasingTool() {
   const { toast } = useToast();
   const [originalText, setOriginalText] = useState("");
-  const [paraphrasedText, setParaphrasedText] = useState("");
-  const [mode, setMode] = useState<IParaphrasedModeType>("Standard");
+  const [results, setResults] = useState<ParaphraseResult | null>(null);
+  const [style, setStyle] = useState<ParaphraseStyle>("formal");
   const [strength, setStrength] = useState([50]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("original");
@@ -51,23 +53,13 @@ export default function ParaphrasingTool() {
     setIsProcessing(true);
 
     try {
-      const { data } = await api.post<ParaphaseResponse>(
-        `text-and-content/paraphrase`,
-        {
-          text: originalText,
-          settings: {
-            mode,
-            strength: strength[0],
-          },
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
-        }
-      );
+      const { data } = await api.post<ParaphraseResult>('/api/paraphrase', {
+        text: originalText,
+        style,
+        vendor: 'gemini',
+      });
 
-      setParaphrasedText(data.data.paraphrased_text);
+      setResults(data);
       setActiveTab("paraphrased");
       toast({
         title: "Text paraphrased successfully",
@@ -89,7 +81,7 @@ export default function ParaphrasingTool() {
 
   const handleClear = () => {
     setOriginalText("");
-    setParaphrasedText("");
+    setResults(null);
     setActiveTab("original");
   };
 
@@ -129,7 +121,7 @@ export default function ParaphrasingTool() {
               >
                 <TabsList className="grid grid-cols-2 mb-4">
                   <TabsTrigger value="original">Original</TabsTrigger>
-                  <TabsTrigger value="paraphrased" disabled={!paraphrasedText}>
+                  <TabsTrigger value="paraphrased" disabled={!results}>
                     Paraphrased
                   </TabsTrigger>
                 </TabsList>
@@ -145,7 +137,7 @@ export default function ParaphrasingTool() {
                   <Textarea
                     placeholder="Paraphrased content will appear here..."
                     className="min-h-[300px] resize-none"
-                    value={paraphrasedText}
+                    value={results?.paraphrased_text || ""}
                     readOnly
                   />
                 </TabsContent>
@@ -192,29 +184,32 @@ export default function ParaphrasingTool() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Paraphrasing Mode</label>
+                <label className="text-sm font-medium">Paraphrasing Style</label>
                 <Select
-                  value={mode}
-                  onValueChange={(value: IParaphrasedModeType) =>
-                    setMode(value)
+                  value={style}
+                  onValueChange={(value: ParaphraseStyle) =>
+                    setStyle(value)
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select mode" />
+                    <SelectValue placeholder="Select style" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Standard">Standard</SelectItem>
-                    <SelectItem value="Fluency">Fluency</SelectItem>
-                    <SelectItem value="Creative">Creative</SelectItem>
+                    <SelectItem value="formal">Formal</SelectItem>
+                    <SelectItem value="casual">Casual</SelectItem>
+                    <SelectItem value="creative">Creative</SelectItem>
+                    <SelectItem value="academic">Academic</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  {mode === "Standard" &&
-                    "Basic paraphrasing that maintains the original meaning"}
-                  {mode === "Fluency" &&
-                    "Improves readability and natural flow of text"}
-                  {mode === "Creative" &&
+                  {style === "formal" &&
+                    "Professional and structured language"}
+                  {style === "casual" &&
+                    "Relaxed and conversational tone"}
+                  {style === "creative" &&
                     "Uses more creative expressions and alternative phrasings"}
+                  {style === "academic" &&
+                    "Scholarly and precise language"}
                 </p>
               </div>
 

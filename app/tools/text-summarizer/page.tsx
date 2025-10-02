@@ -10,13 +10,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
+import { api } from "@/store"
+import { SummaryResult, SummaryStyle, SummaryLength } from "@/store/types"
 
 export default function TextSummarizer() {
   const { toast } = useToast()
   const [originalText, setOriginalText] = useState("")
-  const [summarizedText, setSummarizedText] = useState("")
-  const [style, setStyle] = useState("concise")
-  const [length, setLength] = useState([50])
+  const [results, setResults] = useState<SummaryResult | null>(null)
+  const [style, setStyle] = useState<SummaryStyle>("paragraph")
+  const [lengthPercentage, setLengthPercentage] = useState([50])
+  const [length, setLength] = useState<SummaryLength>("medium")
   const [isProcessing, setIsProcessing] = useState(false)
   const [activeTab, setActiveTab] = useState("original")
 
@@ -41,33 +44,35 @@ export default function TextSummarizer() {
 
     setIsProcessing(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock summarized text based on style and length
-      let summarized = ""
+    try {
+      const { data } = await api.post<SummaryResult>('/api/text-summarize', {
+        text: originalText,
+        length,
+        style,
+        vendor: 'gemini',
+      });
 
-      if (style === "concise") {
-        summarized = `[This is a ${length}% length concise summary of your text. It would contain only the most important points in a straightforward manner.]`
-      } else if (style === "bullet") {
-        summarized = `• Main point one extracted from your text\n• Second key point from your content\n• Third important concept from your text\n• Final crucial element summarized`
-      } else if (style === "paragraph") {
-        summarized = `[This is a ${length}% length paragraph summary of your text. It would present the key points in a cohesive paragraph format, maintaining the flow and context of your original content while significantly reducing the length.]`
-      }
-
-      setSummarizedText(summarized)
-      setActiveTab("summarized")
-      setIsProcessing(false)
-
+      setResults(data);
+      setActiveTab("summarized");
       toast({
         title: "Summarization complete",
-        description: `Your text has been summarized to approximately ${length}% of the original length.`,
-      })
-    }, 3000)
+        description: `Your text has been summarized successfully.`,
+      });
+    } catch (error) {
+      console.error("Failed to summarize text:", error);
+      toast({
+        title: "Failed to summarize text",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   const handleClear = () => {
     setOriginalText("")
-    setSummarizedText("")
+    setResults(null)
     setActiveTab("original")
   }
 
@@ -99,7 +104,7 @@ export default function TextSummarizer() {
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid grid-cols-2 mb-4">
                   <TabsTrigger value="original">Original</TabsTrigger>
-                  <TabsTrigger value="summarized" disabled={!summarizedText}>
+                  <TabsTrigger value="summarized" disabled={!results}>
                     Summarized
                   </TabsTrigger>
                 </TabsList>
@@ -115,7 +120,7 @@ export default function TextSummarizer() {
                   <Textarea
                     placeholder="Summarized content will appear here..."
                     className="min-h-[300px] resize-none"
-                    value={summarizedText}
+                    value={results?.summary || ""}
                     readOnly
                   />
                 </TabsContent>
@@ -157,33 +162,33 @@ export default function TextSummarizer() {
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Summary Style</label>
-                <Select value={style} onValueChange={setStyle}>
+                <Select value={style} onValueChange={(value: SummaryStyle) => setStyle(value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select style" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="concise">Concise</SelectItem>
-                    <SelectItem value="bullet">Bullet Points</SelectItem>
+                    <SelectItem value="bullet_points">Bullet Points</SelectItem>
                     <SelectItem value="paragraph">Paragraph</SelectItem>
+                    <SelectItem value="abstract">Abstract</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  {style === "concise" && "Brief summary with only essential information"}
-                  {style === "bullet" && "Key points presented as bullet points"}
+                  {style === "bullet_points" && "Key points presented as bullet points"}
                   {style === "paragraph" && "Cohesive paragraph that maintains context"}
+                  {style === "abstract" && "Academic-style abstract summary"}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium">Summary Length</label>
-                  <span className="text-sm font-medium">{length}%</span>
+                  <span className="text-sm font-medium">{lengthPercentage[0]}%</span>
                 </div>
-                <Slider value={length} min={10} max={70} step={10} onValueChange={setLength} className="w-full" />
+                <Slider value={lengthPercentage} min={10} max={70} step={10} onValueChange={setLengthPercentage} className="w-full" />
                 <p className="text-xs text-slate-500">
-                  {length[0] <= 20 && "Very short summary with only the most critical points"}
-                  {length[0] > 20 && length[0] <= 40 && "Short summary with key information"}
-                  {length[0] > 40 && "Longer summary with more details preserved"}
+                  {lengthPercentage[0] <= 20 && "Very short summary with only the most critical points"}
+                  {lengthPercentage[0] > 20 && lengthPercentage[0] <= 40 && "Short summary with key information"}
+                  {lengthPercentage[0] > 40 && "Longer summary with more details preserved"}
                 </p>
               </div>
             </CardContent>

@@ -50,22 +50,18 @@ export default function PlagiarismChecker() {
     setIsChecking(true);
 
     try {
-      const { data } = await api.post<PlagiarismCheckerResponse>(
-        `text-and-content/plagiarism-check`,
-        {
-          text,
-          settings: {
-            detection_model: detectionModel,
-          },
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
-        }
-      );
+      const { data } = await api.post<PlagiarismCheckerResponse['data']>('/api/plagiarism', {
+        text,
+        model: detectionModel,
+        vendor: 'gemini',
+      });
 
-      setResults(data.data);
+      setResults({
+        score: data.score,
+        original_content: data.original_content,
+        plagiarized_content: data.plagiarized_content,
+        sources: data.sources ?? [],
+      });
 
 
   toast({

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { GrammarCheckData, GrammarCheckResponse } from "@/store/types";
+import { GrammarCheckData, GrammarCheckResponse, GrammarResult } from "@/store/types";
 import { api } from "@/store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -23,7 +23,7 @@ export default function GrammarChecker() {
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [isChecking, setIsChecking] = useState(false);
-  const [results, setResults] = useState<null | GrammarCheckData>(null);
+  const [results, setResults] = useState<null | GrammarResult>(null);
   const [activeTab, setActiveTab] = useState("original");
 
   const handleCheck = async () => {
@@ -39,19 +39,12 @@ export default function GrammarChecker() {
     setIsChecking(true);
 
     try {
-      const { data } = await api.post<GrammarCheckResponse>(
-        `text-and-content/grammar-check`,
-        {
-          text,
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
-        }
-      );
+      const { data } = await api.post<GrammarResult>('/api/grammar-check', {
+        text,
+        vendor: 'gemini',
+      });
 
-      setResults(data.data);
+      setResults(data);
       setActiveTab("corrected");
       toast({
         title: "Grammar checked successfully",
@@ -76,7 +69,7 @@ export default function GrammarChecker() {
     setResults(null);
   };
 
-  const getErrorTypeColor = (type: "grammar" | "spelling" | "punctuation") => {
+  const getErrorTypeColor = (type: "grammar" | "spelling" | "punctuation" | "style") => {
     switch (type) {
       case "grammar":
         return "bg-amber-100 text-amber-800 border-amber-200";
@@ -84,6 +77,8 @@ export default function GrammarChecker() {
         return "bg-red-100 text-red-800 border-red-200";
       case "punctuation":
         return "bg-blue-100 text-blue-800 border-blue-200";
+      case "style":
+        return "bg-purple-100 text-purple-800 border-purple-200";
       default:
         return "";
     }
@@ -195,7 +190,7 @@ export default function GrammarChecker() {
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-bold text-emerald-600">
-                    {results.score}/100
+                    {results.grammar_score}/100
                   </div>
                   <div className="text-xs text-slate-500">Grammar Score</div>
                 </div>

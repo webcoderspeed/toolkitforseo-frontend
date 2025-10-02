@@ -12,6 +12,7 @@ export interface PlagiarismCheckerData {
   original_content: number;
   plagiarized_content: number;
   sources: PlagiarismCheckerDataSource[];
+  plagiarism_score?: number; // New API field
 }
 
 export interface PlagiarismCheckerDataSource {

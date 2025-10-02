@@ -1,91 +1,82 @@
-import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const MODEL_NAME = "gemini-pro";
-const API_KEY = process.env.GOOGLE_API_KEY;
+import { NextResponse } from "next/server";
+import { AIVendorFactory } from "@/vendor_apis";
+import { outputParser } from "@/lib/output-parser";
+import { API_KEY } from "@/constants";
 
 if (!API_KEY) {
   throw new Error("GOOGLE_API_KEY is not set in environment variables.");
 }
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-
 interface PlagiarismResult {
   score: number;
-  originalContent: number;
-  plagiarizedContent: number;
+  original_content: number;
+  plagiarized_content: number;
   sources: { url: string; similarity: number }[];
+}
+
+interface PlagiarismCheckRequest {
+  text: string;
+  settings: {
+    detection_model: string;
+  };
+  vendor: 'gemini' | 'openai';
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
-    const { text, model } = await req.json();
+    const { text, settings, vendor } = (await req.json()) as PlagiarismCheckRequest;
 
     if (!text) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
 
-    const genModel = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const aiVendor = AIVendorFactory.createVendor(vendor);  
 
-    let prompt = `Analyze the following text for plagiarism and provide a score (0-100, 0 being no plagiarism, 100 being completely plagiarized), the percentage of original content, the percentage of plagiarized content, and a list of potential sources with similarity scores. \n\nText: ${text}\n\n`;
+    const prompt = `
+       You are an expert plagiarism detection system. Analyze the following text and determine if any part of it appears to be plagiarized from online sources.
 
-    if (model === "academic") {
-      prompt += "Focus on academic sources and citations.";
-    } else if (model === "thorough") {
-      prompt += "Perform an extremely detailed analysis.";
+    Based on the provided detection_model, adjust the sensitivity and thoroughness of your analysis.
+
+    Available detection_models:
+
+    - Standard: A balanced approach, suitable for general plagiarism checks.
+    - Academic: More sensitive and thorough, designed for academic content.
+    - Thorough: The most rigorous analysis, checking for subtle similarities.
+
+    Detection Model: ${settings?.detection_model ?? "Standard"}
+
+    Text to analyze:
+
+    ${text}
+
+    Return a JSON object with the following structure:
+    {
+      "score": <a numeric score from 0 to 100 representing the overall likelihood of plagiarism>,
+      "original_content": <a numeric value from 0 to 100 representing the percentage of original content>,
+      "plagiarized_content": <a numeric value from 0 to 100 representing the percentage of plagiarized content>,
+      "sources": [
+        {
+          "url": "<source URL that closely matches the plagiarized content>",
+          "similarity": <percentage similarity to this source (0 to 100)>
+        }
+        // You may include multiple sources if applicable
+      ]
     }
+    `;
 
-    const result = await genModel.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text();
+    const responseText = await aiVendor.ask({
+      api_key: API_KEY!,
+      prompt,
+    });
 
-    const parsedResults: PlagiarismResult = parseGeminiResponse(responseText);
+    const parsedResults: PlagiarismResult = outputParser(responseText);
 
     return NextResponse.json(parsedResults);
-
   } catch (error) {
     console.error("Error checking plagiarism:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-function parseGeminiResponse(responseText: string): PlagiarismResult {
-  try {
-    const scoreMatch = responseText.match(/Score: (\d+)%/);
-    const originalMatch = responseText.match(/Original Content: (\d+)%/);
-    const plagiarizedMatch = responseText.match(/Plagiarized Content: (\d+)%/);
-    const sourcesMatch = responseText.match(/Sources:([\s\S]*)/);
-
-    const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
-    const originalContent = originalMatch ? parseInt(originalMatch[1]) : 100;
-    const plagiarizedContent = plagiarizedMatch ? parseInt(plagiarizedMatch[1]) : 0;
-
-    let sources: { url: string; similarity: number }[] = [];
-    if (sourcesMatch) {
-      const sourcesText = sourcesMatch[1];
-      const sourceLines = sourcesText.split('\n').filter(line => line.trim());
-      sources = sourceLines.map(line => {
-        const parts = line.split(' - ');
-        return {
-          url: parts[0].trim(),
-          similarity: parseInt(parts[1]?.replace('% match', '') || '0'),
-        };
-      }).filter(source => source.url.startsWith("http"));
-    }
-
-    return {
-      score,
-      originalContent,
-      plagiarizedContent,
-      sources,
-    };
-  } catch (parseError) {
-    console.error("Error parsing Gemini response:", parseError);
-    return {
-      score: 0,
-      originalContent: 100,
-      plagiarizedContent: 0,
-      sources: [],
-    };
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
