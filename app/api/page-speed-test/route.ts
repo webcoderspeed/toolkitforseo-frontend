@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
-import { API_KEY } from '@/constants';
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
 interface PerformanceMetric {
   name: string;
@@ -75,6 +75,12 @@ interface PageSpeedResult {
 export async function POST(request: NextRequest) {
   try {
     const { url, device_type = 'mobile', vendor = 'gemini' } = await request.json();
+    // Get vendor-specific API key
+    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
 
     if (!url) {
       return NextResponse.json(
@@ -90,13 +96,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Invalid URL format' },
         { status: 400 }
-      );
-    }
-
-    if (!API_KEY) {
-      return NextResponse.json(
-        { error: 'API key not configured' },
-        { status: 500 }
       );
     }
 
@@ -290,7 +289,7 @@ Provide realistic performance metrics based on the device type (mobile typically
     try {
       const response = await aiVendor.ask({
         prompt,
-        api_key: API_KEY
+        api_key: apiKey
       });
 
       // Try to parse the AI response

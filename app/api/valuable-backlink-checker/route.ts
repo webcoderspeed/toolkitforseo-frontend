@@ -1,34 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { AIVendorFactory } from '@/vendor_apis';
-import { outputParser } from '@/lib/output-parser';
-import { WebScraper } from '@/lib/web-scraper';
-import { ValuableBacklinkResult } from '@/store/types/valuable-backlink-checker.types';
+import { NextRequest, NextResponse } from "next/server";
+import { AIVendorFactory } from "@/vendor_apis";
+import { outputParser } from "@/lib/output-parser";
+import { WebScraper } from "@/lib/web-scraper";
+import { ValuableBacklinkResult } from "@/store/types/valuable-backlink-checker.types";
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
 interface ValuableBacklinkRequest {
   url: string;
-  vendor: 'gemini' | 'openai';
+  vendor: "gemini" | "openai";
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  let url: string = '';
-  
+  let url: string = "";
+
   try {
     const body: ValuableBacklinkRequest = await request.json();
-    const { url: requestUrl, vendor = 'gemini' } = body;
-    url = requestUrl;
+    const { url: requestUrl, vendor = "gemini" } = body;
+    // Get vendor-specific API key
+    const apiKey = vendor === "openai" ? OPENAI_API_KEY : GOOGLE_API_KEY;
 
-    if (!url || typeof url !== 'string' || url.trim().length === 0) {
+    if (!apiKey) {
       return NextResponse.json(
-        { error: 'URL is required and must be a non-empty string' },
-        { status: 400 }
+        { error: `${vendor.toUpperCase()} API key not configured` },
+        { status: 500 }
       );
     }
+    url = requestUrl;
 
-    const API_KEY = process.env.GEMINI_API_KEY;
-    if (!API_KEY) {
+    if (!url || typeof url !== "string" || url.trim().length === 0) {
       return NextResponse.json(
-        { error: 'API key not configured' },
-        { status: 500 }
+        { error: "URL is required and must be a non-empty string" },
+        { status: 400 }
       );
     }
 
@@ -38,32 +40,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const linkAnalysis = await WebScraper.analyzeLinkStructure(url);
 
     // Step 2: Analyze domain and content quality
-    const domain = new URL(url).hostname.replace('www.', '');
+    const domain = new URL(url).hostname.replace("www.", "");
     const domainAge = Math.floor(Math.random() * 10) + 5; // Simulated domain age
-    const hasSSL = url.startsWith('https://');
-    
-    // Step 3: Calculate metrics based on real data
-    const contentQualityScore = Math.min(100, Math.max(20, 
-      (pageData.wordCount / 50) + // Content length factor
-      (pageData.headings.h1.length * 5) + // Heading structure
-      (pageData.headings.h2.length * 3) +
-      (pageData.headings.h3.length * 2) +
-      (hasSSL ? 10 : 0) + // SSL bonus
-      (pageData.metaDescription ? 10 : 0) // Meta description bonus
-    ));
+    const hasSSL = url.startsWith("https://");
 
-    const linkQualityScore = Math.min(100, Math.max(20,
-      (linkAnalysis.externalLinks > 0 ? 30 : 0) + // Has external links
-      (linkAnalysis.internalLinks > 5 ? 20 : linkAnalysis.internalLinks * 4) + // Internal link structure
-      (linkAnalysis.brokenLinks.length === 0 ? 20 : Math.max(0, 20 - linkAnalysis.brokenLinks.length * 5)) + // No broken links bonus
-      (Object.keys(linkAnalysis.linksByDomain).length * 2) // Domain diversity
-    ));
+    // Step 3: Calculate metrics based on real data
+    const contentQualityScore = Math.min(
+      100,
+      Math.max(
+        20,
+        pageData.wordCount / 50 + // Content length factor
+          pageData.headings.h1.length * 5 + // Heading structure
+          pageData.headings.h2.length * 3 +
+          pageData.headings.h3.length * 2 +
+          (hasSSL ? 10 : 0) + // SSL bonus
+          (pageData.metaDescription ? 10 : 0) // Meta description bonus
+      )
+    );
+
+    const linkQualityScore = Math.min(
+      100,
+      Math.max(
+        20,
+        (linkAnalysis.externalLinks > 0 ? 30 : 0) + // Has external links
+          (linkAnalysis.internalLinks > 5
+            ? 20
+            : linkAnalysis.internalLinks * 4) + // Internal link structure
+          (linkAnalysis.brokenLinks.length === 0
+            ? 20
+            : Math.max(0, 20 - linkAnalysis.brokenLinks.length * 5)) + // No broken links bonus
+          Object.keys(linkAnalysis.linksByDomain).length * 2 // Domain diversity
+      )
+    );
 
     // Step 4: Simulate finding backlinks to this domain
     const simulatedBacklinks = await WebScraper.findBacklinks(domain, [
       `site:${domain}`,
       `"${domain}"`,
-      `link:${domain}`
+      `link:${domain}`,
     ]);
 
     // Step 5: Use AI to analyze the scraped data and provide insights
@@ -77,9 +91,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       
       Real scraped data:
       - Page Title: ${pageData.title}
-      - Meta Description: ${pageData.metaDescription || 'Not provided'}
+      - Meta Description: ${pageData.metaDescription || "Not provided"}
       - Content Word Count: ${pageData.wordCount}
-      - Headings: H1(${pageData.headings.h1.length}), H2(${pageData.headings.h2.length}), H3(${pageData.headings.h3.length})
+      - Headings: H1(${pageData.headings.h1.length}), H2(${
+      pageData.headings.h2.length
+    }), H3(${pageData.headings.h3.length})
       - Internal Links: ${linkAnalysis.internalLinks}
       - External Links: ${linkAnalysis.externalLinks}
       - Broken Links: ${linkAnalysis.brokenLinks.length}
@@ -114,7 +130,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             "<strength based on technical factors>"
           ],
           "weaknesses": [
-            "<weakness based on broken links: ${linkAnalysis.brokenLinks.length}>",
+            "<weakness based on broken links: ${
+              linkAnalysis.brokenLinks.length
+            }>",
             "<weakness based on content gaps>",
             "<weakness based on technical issues>"
           ],
@@ -139,17 +157,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const response = await aiVendor.ask({
       prompt,
-      api_key: API_KEY!,
+      api_key: apiKey,
     });
 
     const result = outputParser(response) as ValuableBacklinkResult;
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error in valuable backlink analysis:', error);
-    
+    console.error("Error in valuable backlink analysis:", error);
+
     // Fallback: return a basic analysis if scraping fails
-    if (error instanceof Error && error.message.includes('Failed to scrape')) {
+    if (error instanceof Error && error.message.includes("Failed to scrape")) {
       return NextResponse.json({
         url,
         overallScore: 50,
@@ -159,37 +177,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           trustFlow: 30,
           citationFlow: 25,
           spamScore: 20,
-          organicTraffic: 1000
+          organicTraffic: 1000,
         },
         analysis: {
-          linkQuality: 'Medium',
-          contentRelevance: 'Medium',
-          domainTrust: 'Medium',
-          linkPlacement: 'Contextual',
-          anchorTextOptimization: 'Natural'
+          linkQuality: "Medium",
+          contentRelevance: "Medium",
+          domainTrust: "Medium",
+          linkPlacement: "Contextual",
+          anchorTextOptimization: "Natural",
         },
         summary: {
           strengths: [
-            'Unable to analyze due to scraping limitations',
-            'Manual analysis recommended',
-            'Consider using alternative tools'
+            "Unable to analyze due to scraping limitations",
+            "Manual analysis recommended",
+            "Consider using alternative tools",
           ],
           weaknesses: [
-            'Scraping failed - limited data available',
-            'Cannot assess content quality',
-            'Cannot verify link structure'
+            "Scraping failed - limited data available",
+            "Cannot assess content quality",
+            "Cannot verify link structure",
           ],
           recommendations: [
-            'Perform manual website analysis',
-            'Use specialized SEO tools for detailed metrics',
-            'Check website accessibility and loading speed'
-          ]
-        }
+            "Perform manual website analysis",
+            "Use specialized SEO tools for detailed metrics",
+            "Check website accessibility and loading speed",
+          ],
+        },
       });
     }
 
     return NextResponse.json(
-      { error: 'Failed to analyze valuable backlinks' },
+      { error: "Failed to analyze valuable backlinks" },
       { status: 500 }
     );
   }

@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { AIVendorFactory } from "@/vendor_apis";
 import { outputParser } from "@/lib/output-parser";
-import { API_KEY } from "@/constants";
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
-if (!API_KEY) {
-  throw new Error("GOOGLE_API_KEY is not set in environment variables.");
-}
+
 
 interface ParaphraseResult {
   original_text: string;
@@ -27,6 +25,12 @@ interface ParaphraseRequest {
 export async function POST(req: Request): Promise<NextResponse> {
   try {
     const { text, style, vendor } = await req.json() as ParaphraseRequest;
+    // Get vendor-specific API key
+    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
 
     if (!text) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
@@ -77,7 +81,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     `;
 
     const responseText = await aiVendor.ask({
-      api_key: API_KEY!,
+      api_key: apiKey,
       prompt,
     });
 

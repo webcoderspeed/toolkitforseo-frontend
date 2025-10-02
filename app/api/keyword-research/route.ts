@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
-import { API_KEY } from '@/constants';
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
 interface KeywordResearchRequest {
   keyword: string;
@@ -29,14 +29,18 @@ interface KeywordResearchResult {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { keyword, vendor } = await req.json() as KeywordResearchRequest;
+    // Get vendor-specific API key
+    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
 
     if (!keyword) {
       return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
     }
 
-    if (!API_KEY) {
-      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
-    }
+    
 
     // Use AI to generate keyword research data
     const aiVendor = AIVendorFactory.createVendor(vendor);
@@ -163,7 +167,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const aiResponse = await aiVendor.ask({
       prompt: prompt,
-      api_key: API_KEY
+      api_key: apiKey
     });
     const parsedData = outputParser(aiResponse) as KeywordResearchResult;
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { KeywordResearchData } from '@/store/types/keyword-research.types';
-import { API_KEY } from '@/constants';
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
 interface KeywordCompetitionRequest {
   keyword: string;
@@ -12,14 +12,18 @@ interface KeywordCompetitionRequest {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { keyword, vendor } = await req.json() as KeywordCompetitionRequest;
+    // Get vendor-specific API key
+    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
 
     if (!keyword) {
       return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
     }
 
-    if (!API_KEY) {
-      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
-    }
+    
 
     // Use AI to analyze keyword competition directly
     const aiVendor = AIVendorFactory.createVendor(vendor);
@@ -158,7 +162,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const response = await aiVendor.ask({
       prompt,
-      api_key: API_KEY!,
+      api_key: apiKey,
     });
 
     const result = outputParser(response) as KeywordResearchData;

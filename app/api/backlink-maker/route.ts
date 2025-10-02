@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
-import { API_KEY } from '@/constants';
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 
 export async function POST(request: NextRequest) {
   try {
     const { domain, keywords, vendor = 'gemini' } = await request.json();
+    // Get vendor-specific API key
+    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
 
     if (!domain) {
       return NextResponse.json(
@@ -14,9 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!API_KEY) {
-      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
-    }
+    
 
     const aiVendor = AIVendorFactory.createVendor(vendor);
     
@@ -113,7 +117,7 @@ Provide at least 10-15 realistic backlink opportunities with detailed informatio
     try {
       const response = await aiVendor.ask({
         prompt: prompt,
-        api_key: API_KEY
+        api_key: apiKey
       });
 
       const parsedResult = outputParser(response) as any;
