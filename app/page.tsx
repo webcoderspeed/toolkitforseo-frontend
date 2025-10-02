@@ -24,7 +24,6 @@ import {
   Crosshair,
   ArrowUpRight,
   Gauge,
-  Link,
   LinkIcon,
   Anchor,
   Globe,
@@ -32,66 +31,32 @@ import {
   Database,
   Code,
   ShieldCheck,
+  Users,
+  TrendingUp,
+  Star,
+  Award,
+  Target,
 } from "lucide-react";
-import { subscribeUser } from "@/app/actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
-import { Toaster } from "@/components/ui/toaster";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SignedIn, SignedOut } from '@clerk/nextjs';
+import Link from "next/link";
 
 export default function LandingPage() {
   const router = useRouter();
-  const { toast } = useToast();
-  const [email, setEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const handleSubscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !email.includes("@")) {
-      toast({
-        title: "Invalid email",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await subscribeUser(email);
-      setIsSubscribed(true);
-      setEmail("");
-      toast({
-        title: "Subscription successful!",
-        description:
-          "Thank you for subscribing. Check your email for confirmation.",
-      });
-    } catch (error) {
-      toast({
-        title: "Subscription failed",
-        description: "There was an error subscribing. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // Prevent hydration errors by not rendering dynamic content until client-side
   if (!isMounted) {
-    return null; // Return nothing during server-side rendering
+    return null;
   }
 
   const handleToolClick = (toolName: string) => {
-    // Convert tool name to kebab case for URL
     const toolUrl = toolName.toLowerCase().replace(/\s+/g, "-");
     router.push(`/tools/${toolUrl}`);
   };
@@ -111,33 +76,18 @@ export default function LandingPage() {
 
   const keywordTools = [
     { name: "Keyword Research Tool", icon: <Search className="h-5 w-5" /> },
-    {
-      name: "Keyword Competition Tool",
-      icon: <Crosshair className="h-5 w-5" />,
-    },
-    {
-      name: "Long Tail Keyword Suggestion Tool",
-      icon: <ArrowUpRight className="h-5 w-5" />,
-    },
-    {
-      name: "SEO Keyword Competition Analysis",
-      icon: <BarChart className="h-5 w-5" />,
-    },
+    { name: "Keyword Competition Tool", icon: <Crosshair className="h-5 w-5" /> },
+    { name: "Long Tail Keyword Suggestion Tool", icon: <ArrowUpRight className="h-5 w-5" /> },
+    { name: "SEO Keyword Competition Analysis", icon: <BarChart className="h-5 w-5" /> },
     { name: "Live Keyword Analyzer", icon: <Gauge className="h-5 w-5" /> },
   ];
 
   const backlinkTools = [
-    { name: "Backlink Checker", icon: <Link className="h-5 w-5" /> },
+    { name: "Backlink Checker", icon: <LinkIcon className="h-5 w-5" /> },
     { name: "Backlink Maker", icon: <LinkIcon className="h-5 w-5" /> },
-    {
-      name: "Website Link Count Checker",
-      icon: <Database className="h-5 w-5" />,
-    },
+    { name: "Website Link Count Checker", icon: <Database className="h-5 w-5" /> },
     { name: "Anchor Text Distribution", icon: <Anchor className="h-5 w-5" /> },
-    {
-      name: "Valuable Backlink Checker",
-      icon: <CheckCircle className="h-5 w-5" />,
-    },
+    { name: "Valuable Backlink Checker", icon: <CheckCircle className="h-5 w-5" /> },
   ];
 
   const seoTools = [
@@ -146,6 +96,13 @@ export default function LandingPage() {
     { name: "Google Index Checker", icon: <Database className="h-5 w-5" /> },
     { name: "Meta Tag Generator", icon: <Code className="h-5 w-5" /> },
     { name: "SSL Checker", icon: <ShieldCheck className="h-5 w-5" /> },
+  ];
+
+  const stats = [
+    { number: "25+", label: "AI-Powered Tools", icon: <Zap className="h-6 w-6" /> },
+    { number: "100%", label: "Free Forever", icon: <Award className="h-6 w-6" /> },
+    { number: "10K+", label: "Active Users", icon: <Users className="h-6 w-6" /> },
+    { number: "99.9%", label: "Uptime", icon: <TrendingUp className="h-6 w-6" /> },
   ];
 
   const container = {
@@ -165,7 +122,7 @@ export default function LandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <header className="container mx-auto py-6 px-4">
+      <header className="container mx-auto py-6 px-4 border-b border-slate-200">
         <div className="flex justify-between items-center">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -175,9 +132,7 @@ export default function LandingPage() {
             onClick={() => router.push("/")}
           >
             <Zap className="h-6 w-6 text-emerald-600" />
-            <span className="text-xl font-bold text-slate-900">
-              ToolkitForSEO
-            </span>
+            <span className="text-xl font-bold text-slate-900">ToolkitForSEO</span>
           </motion.div>
           <motion.div
             initial={{ opacity: 0 }}
@@ -185,190 +140,137 @@ export default function LandingPage() {
             transition={{ delay: 0.3, duration: 0.5 }}
             className="flex items-center gap-3"
           >
-            <Badge
-              variant="outline"
-              className="bg-emerald-50 text-emerald-700 border-emerald-200"
-            >
-              100% Free Tools
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+              🚀 Live & Ready
             </Badge>
-            <Button variant="outline" className="hidden sm:flex">
-              Coming Soon
-            </Button>
+            <SignedOut>
+              <div className="flex gap-2">
+                <Button variant="ghost" asChild>
+                  <Link href="/sign-in">Sign In</Link>
+                </Button>
+                <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+                  <Link href="/sign-up">Get Started Free</Link>
+                </Button>
+              </div>
+            </SignedOut>
+            <SignedIn>
+              <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+                <Link href="/tools">Access Tools</Link>
+              </Button>
+            </SignedIn>
           </motion.div>
         </div>
       </header>
 
       <main className="flex-grow container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col lg:flex-row gap-12 items-center">
+          {/* Hero Section */}
+          <div className="text-center space-y-8 mb-16">
             <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7 }}
-              className="flex-1 space-y-6"
+              className="space-y-6"
             >
-              <div className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-sm font-medium">
-                Coming Soon
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-100 text-emerald-800 text-sm font-medium">
+                <Star className="h-4 w-4" />
+                Next-Gen SEO Platform - Fully Launched
               </div>
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-slate-900 leading-tight">
-                25 Free SEO Tools <br />
+                The Complete SEO Toolkit
+                <br />
                 <span className="text-emerald-600">Powered by AI</span>
               </h1>
-              <p className="text-lg text-slate-600 max-w-xl">
-                A powerful toolkit for SEO professionals to boost productivity
-                and efficiency using advanced AI technology.{" "}
-                <span className="font-semibold text-emerald-700">
-                  All tools are 100% free to use!
-                </span>
+              <p className="text-xl text-slate-600 max-w-3xl mx-auto">
+                25 professional-grade SEO tools that would cost $500+/month elsewhere. 
+                <span className="font-semibold text-emerald-700"> Completely free forever.</span>
+                <br />
+                Join thousands of marketers, agencies, and businesses already using our platform.
               </p>
-
-              <div className="pt-4">
-                {!isSubscribed ? (
-                  <form
-                    onSubmit={handleSubscribe}
-                    className="flex flex-col sm:flex-row gap-3 max-w-md"
-                  >
-                    <Input
-                      type="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="flex-grow"
-                      disabled={isSubmitting}
-                    />
-                    <Button
-                      type="submit"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? "Subscribing..." : "Subscribe"}
-                      {!isSubmitting && <ArrowRight className="ml-2 h-4 w-4" />}
-                    </Button>
-                  </form>
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex items-center gap-2 text-emerald-600"
-                  >
-                    <CheckCircle className="h-5 w-5" />
-                    <span>
-                      Thank you for subscribing! Check your email for
-                      confirmation.
-                    </span>
-                  </motion.div>
-                )}
-                <p className="text-sm text-slate-500 mt-2">
-                  We&apos;ll notify you when we launch. No spam, ever.
-                </p>
-              </div>
             </motion.div>
 
             <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.2 }}
-              className="flex-1"
+              className="flex flex-col sm:flex-row gap-4 justify-center items-center"
             >
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg blur opacity-25"></div>
-                <div className="relative bg-white rounded-lg shadow-xl overflow-hidden">
-                  <div className="p-6 sm:p-10">
-                    <div className="grid grid-cols-2 gap-4">
-                      <FeatureCard
-                        icon={<FileText className="h-6 w-6 text-emerald-600" />}
-                        title="Content Tools"
-                        description="10 powerful tools for content optimization"
-                      />
-                      <FeatureCard
-                        icon={<Key className="h-6 w-6 text-emerald-600" />}
-                        title="Keyword Tools"
-                        description="5 advanced keyword research tools"
-                      />
-                      <FeatureCard
-                        icon={<Link className="h-6 w-6 text-emerald-600" />}
-                        title="Backlink Tools"
-                        description="5 comprehensive backlink analysis tools"
-                      />
-                      <FeatureCard
-                        icon={<Globe className="h-6 w-6 text-emerald-600" />}
-                        title="SEO Utilities"
-                        description="5 essential website SEO tools"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <SignedOut>
+                <Button size="lg" asChild className="bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-4">
+                  <Link href="/sign-up">
+                    Start Using Tools Now
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild className="text-lg px-8 py-4">
+                  <Link href="/tools">
+                    View All Tools
+                  </Link>
+                </Button>
+              </SignedOut>
+              <SignedIn>
+                <Button size="lg" asChild className="bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-4">
+                  <Link href="/tools">
+                    Access Your Tools
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+              </SignedIn>
             </motion.div>
           </div>
 
+          {/* Stats Section */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.4 }}
-            className="mt-24"
+            className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16"
+          >
+            {stats.map((stat, index) => (
+              <div key={index} className="text-center p-6 bg-white rounded-lg shadow-sm border border-slate-200">
+                <div className="flex justify-center mb-3 text-emerald-600">
+                  {stat.icon}
+                </div>
+                <div className="text-3xl font-bold text-slate-900 mb-1">{stat.number}</div>
+                <div className="text-sm text-slate-600">{stat.label}</div>
+              </div>
+            ))}
+          </motion.div>
+
+          {/* Tools Showcase */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.6 }}
+            className="mb-16"
           >
             <div className="text-center mb-12">
-              <Badge className="mb-4 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-none">
-                100% FREE
-              </Badge>
-              <h2 className="text-3xl font-bold text-slate-900">
-                Explore All 25 Free SEO Tools
+              <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+                Complete SEO Arsenal
               </h2>
-              <p className="text-slate-600 mt-2 max-w-2xl mx-auto">
-                Our comprehensive suite of SEO tools to help you optimize your
-                content, research keywords, analyze backlinks, and improve your
-                website's SEO performance.
+              <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+                Everything you need for SEO success. No subscriptions, no limits, no catch.
               </p>
             </div>
 
             <Tabs defaultValue="text" className="w-full">
-              <TabsList className="grid grid-cols-4 mb-8">
-                <TabsTrigger
-                  value="text"
-                  className="data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-800"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Text & Content
-                </TabsTrigger>
-                <TabsTrigger
-                  value="keyword"
-                  className="data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-800"
-                >
-                  <Key className="h-4 w-4 mr-2" />
-                  Keyword Research
-                </TabsTrigger>
-                <TabsTrigger
-                  value="backlink"
-                  className="data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-800"
-                >
-                  <Link className="h-4 w-4 mr-2" />
-                  Backlink Analysis
-                </TabsTrigger>
-                <TabsTrigger
-                  value="seo"
-                  className="data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-800"
-                >
-                  <Globe className="h-4 w-4 mr-2" />
-                  SEO Utilities
-                </TabsTrigger>
+              <TabsList className="grid w-full grid-cols-4 mb-8">
+                <TabsTrigger value="text">Content Tools</TabsTrigger>
+                <TabsTrigger value="keyword">Keyword Tools</TabsTrigger>
+                <TabsTrigger value="backlink">Backlink Tools</TabsTrigger>
+                <TabsTrigger value="seo">SEO Utilities</TabsTrigger>
               </TabsList>
 
               <TabsContent value="text">
                 <motion.div
                   variants={container}
                   initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  animate="show"
+                  className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
                 >
                   {textTools.map((tool, index) => (
-                    <motion.div
-                      key={index}
-                      variants={item}
-                      onClick={() => handleToolClick(tool.name)}
-                    >
-                      <ToolCard icon={tool.icon} name={tool.name} />
+                    <motion.div key={index} variants={item}>
+                      <ToolCard icon={tool.icon} name={tool.name} onClick={() => handleToolClick(tool.name)} />
                     </motion.div>
                   ))}
                 </motion.div>
@@ -378,17 +280,12 @@ export default function LandingPage() {
                 <motion.div
                   variants={container}
                   initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  animate="show"
+                  className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
                 >
                   {keywordTools.map((tool, index) => (
-                    <motion.div
-                      key={index}
-                      variants={item}
-                      onClick={() => handleToolClick(tool.name)}
-                    >
-                      <ToolCard icon={tool.icon} name={tool.name} />
+                    <motion.div key={index} variants={item}>
+                      <ToolCard icon={tool.icon} name={tool.name} onClick={() => handleToolClick(tool.name)} />
                     </motion.div>
                   ))}
                 </motion.div>
@@ -398,17 +295,12 @@ export default function LandingPage() {
                 <motion.div
                   variants={container}
                   initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  animate="show"
+                  className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
                 >
                   {backlinkTools.map((tool, index) => (
-                    <motion.div
-                      key={index}
-                      variants={item}
-                      onClick={() => handleToolClick(tool.name)}
-                    >
-                      <ToolCard icon={tool.icon} name={tool.name} />
+                    <motion.div key={index} variants={item}>
+                      <ToolCard icon={tool.icon} name={tool.name} onClick={() => handleToolClick(tool.name)} />
                     </motion.div>
                   ))}
                 </motion.div>
@@ -418,17 +310,12 @@ export default function LandingPage() {
                 <motion.div
                   variants={container}
                   initial="hidden"
-                  whileInView="show"
-                  viewport={{ once: true }}
-                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  animate="show"
+                  className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
                 >
                   {seoTools.map((tool, index) => (
-                    <motion.div
-                      key={index}
-                      variants={item}
-                      onClick={() => handleToolClick(tool.name)}
-                    >
-                      <ToolCard icon={tool.icon} name={tool.name} />
+                    <motion.div key={index} variants={item}>
+                      <ToolCard icon={tool.icon} name={tool.name} onClick={() => handleToolClick(tool.name)} />
                     </motion.div>
                   ))}
                 </motion.div>
@@ -436,169 +323,127 @@ export default function LandingPage() {
             </Tabs>
           </motion.div>
 
+          {/* Value Proposition */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.6 }}
-            className="mt-24 text-center"
+            transition={{ duration: 0.7, delay: 0.8 }}
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-8 md:p-12 text-white text-center mb-16"
           >
-            <h2 className="text-3xl font-bold text-slate-900 mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
               Why Choose ToolkitForSEO?
             </h2>
-            <div className="grid md:grid-cols-3 gap-8">
-              <BenefitCard
-                number="01"
-                title="100% Free Tools"
-                description="All 25 SEO tools are completely free to use with no hidden costs or premium features"
-              />
-              <BenefitCard
-                number="02"
-                title="AI-Powered Insights"
-                description="Leverage advanced AI to get actionable insights for your SEO strategy"
-              />
-              <BenefitCard
-                number="03"
-                title="All-in-One Platform"
-                description="Access all the tools you need in one place without switching between services"
-              />
+            <p className="text-xl mb-8 opacity-90">
+              We've built what the SEO community has been asking for - professional tools without the premium price tag.
+            </p>
+            <div className="grid md:grid-cols-3 gap-6 mb-8">
+              <div className="space-y-2">
+                <Target className="h-8 w-8 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold">Enterprise Quality</h3>
+                <p className="text-sm opacity-90">Professional-grade tools used by Fortune 500 companies</p>
+              </div>
+              <div className="space-y-2">
+                <Zap className="h-8 w-8 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold">AI-Powered</h3>
+                <p className="text-sm opacity-90">Latest AI technology for accurate and fast results</p>
+              </div>
+              <div className="space-y-2">
+                <Award className="h-8 w-8 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold">Always Free</h3>
+                <p className="text-sm opacity-90">No hidden costs, no premium tiers, no limitations</p>
+              </div>
             </div>
+            <SignedOut>
+              <Button size="lg" variant="secondary" asChild className="bg-white text-emerald-600 hover:bg-gray-50">
+                <Link href="/sign-up">
+                  Join 10,000+ Users Today
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            </SignedOut>
           </motion.div>
 
+          {/* Final CTA */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-            className="mt-24 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl p-8 md:p-12 text-white text-center"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 1.0 }}
+            className="text-center"
           >
-            <h2 className="text-3xl font-bold mb-4">
-              Be the First to Know When We Launch
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+              Ready to Supercharge Your SEO?
             </h2>
-            <p className="max-w-2xl mx-auto mb-8">
-              Subscribe now to get early access to all 25 free SEO tools as soon
-              as we launch.
+            <p className="text-lg text-slate-600 mb-8 max-w-2xl mx-auto">
+              Join thousands of marketers, agencies, and businesses who trust ToolkitForSEO for their SEO needs.
             </p>
-            {!isSubscribed ? (
-              <form
-                onSubmit={handleSubscribe}
-                className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-              >
-                <Input
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="flex-grow bg-white/20 border-white/30 text-white placeholder:text-white/70"
-                  disabled={isSubmitting}
-                />
-                <Button
-                  type="submit"
-                  className="bg-white text-emerald-700 hover:bg-white/90"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? "Subscribing..." : "Subscribe"}
-                  {!isSubmitting && <ArrowRight className="ml-2 h-4 w-4" />}
-                </Button>
-              </form>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center justify-center gap-2 text-white"
-              >
-                <CheckCircle className="h-5 w-5" />
-                <span>
-                  Thank you for subscribing! Check your email for confirmation.
-                </span>
-              </motion.div>
-            )}
+            <SignedOut>
+              <Button size="lg" asChild className="bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-4">
+                <Link href="/sign-up">
+                  Get Started - It's Free Forever
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            </SignedOut>
+            <SignedIn>
+              <Button size="lg" asChild className="bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-4">
+                <Link href="/tools">
+                  Start Using Tools Now
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            </SignedIn>
           </motion.div>
         </div>
       </main>
 
-      <footer className="bg-slate-900 text-slate-200 py-12">
+      <footer className="bg-slate-900 text-white py-12">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center gap-2 mb-6 md:mb-0">
-              <Zap className="h-5 w-5 text-emerald-400" />
-              <span className="text-lg font-bold">ToolkitForSEO</span>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Zap className="h-6 w-6 text-emerald-400" />
+              <span className="text-xl font-bold">ToolkitForSEO</span>
             </div>
-            <div className="text-sm text-slate-400">
-              © {new Date().getFullYear()} ToolkitForSEO. All rights reserved.
+            <p className="text-slate-400 mb-4">
+              The world's most comprehensive free SEO toolkit. Built for professionals, accessible to everyone.
+            </p>
+            <div className="flex justify-center gap-6 text-sm text-slate-400">
+              <span>© 2024 ToolkitForSEO</span>
+              <span>•</span>
+              <span>All tools free forever</span>
+              <span>•</span>
+              <span>No registration required for preview</span>
             </div>
           </div>
         </div>
       </footer>
-      <Toaster />
     </div>
   );
 }
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
+function ToolCard({ 
+  icon, 
+  name, 
+  onClick 
+}: { 
+  icon: React.ReactNode; 
+  name: string;
+  onClick?: () => void;
 }) {
   return (
     <motion.div
-      whileHover={{ scale: 1.03 }}
-      transition={{ type: "spring", stiffness: 400, damping: 10 }}
-      className="bg-slate-50 p-4 rounded-lg"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      className="bg-white rounded-lg p-4 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-200 cursor-pointer group"
+      onClick={onClick}
     >
-      <div className="mb-3">{icon}</div>
-      <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
-      <p className="text-sm text-slate-600">{description}</p>
-    </motion.div>
-  );
-}
-
-function ToolCard({ icon, name }: { icon: React.ReactNode; name: string }) {
-  return (
-    <motion.div
-      whileHover={{
-        y: -5,
-        boxShadow:
-          "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-      }}
-      className="bg-white border border-slate-100 rounded-lg p-5 flex items-center gap-4 transition-all cursor-pointer"
-    >
-      <div className="bg-emerald-100 p-3 rounded-lg text-emerald-600">
-        {icon}
+      <div className="flex flex-col items-center text-center space-y-2">
+        <div className="text-emerald-600 group-hover:text-emerald-700 transition-colors">
+          {icon}
+        </div>
+        <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">
+          {name}
+        </span>
       </div>
-      <div>
-        <h3 className="font-medium text-slate-900">{name}</h3>
-        <Badge
-          variant="outline"
-          className="mt-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
-        >
-          Free
-        </Badge>
-      </div>
-    </motion.div>
-  );
-}
-
-function BenefitCard({
-  number,
-  title,
-  description,
-}: {
-  number: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <motion.div
-      whileHover={{ y: -5 }}
-      className="bg-white p-6 rounded-xl shadow-sm border border-slate-100"
-    >
-      <div className="text-emerald-600 font-bold text-lg mb-2">{number}</div>
-      <h3 className="text-xl font-bold text-slate-900 mb-3">{title}</h3>
-      <p className="text-slate-600">{description}</p>
     </motion.div>
   );
 }
