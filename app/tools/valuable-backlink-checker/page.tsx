@@ -16,39 +16,13 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/store";
-
-interface IValuableBacklinkChecker {
-  totalBacklinks: number;
-  valuableBacklinks: number;
-  backlinksAnalyzed: {
-    url: string;
-    domain: string;
-    domainAuthority: number;
-    pageAuthority: number;
-    doFollow: boolean;
-    status: "valuable" | "moderate" | "low-value";
-    metrics: {
-      traffic: number;
-      relevance: number;
-      trustFlow: number;
-      citationFlow: number;
-    };
-  }[];
-  summary: {
-    valuableCount: number;
-    moderateCount: number;
-    lowValueCount: number;
-    doFollowCount: number;
-    noFollowCount: number;
-    averageDomainAuthority: number;
-  };
-}
+import { ValuableBacklinkResult } from "@/store/types/valuable-backlink-checker.types";
 
 export default function ValuableBacklinkChecker() {
   const { toast } = useToast();
   const [url, setUrl] = useState("");
   const [isChecking, setIsChecking] = useState(false);
-  const [results, setResults] = useState<null | IValuableBacklinkChecker>(null);
+  const [results, setResults] = useState<null | ValuableBacklinkResult>(null);
 
   const handleCheck = async () => {
     if (!url.trim()) {
@@ -82,24 +56,20 @@ export default function ValuableBacklinkChecker() {
     setIsChecking(true);
 
     try {
-      const { data } = await api.post<{ data: IValuableBacklinkChecker }>(
-        `backlink-analysis/valuable-backlink-checker`,
+      const { data } = await api.post<ValuableBacklinkResult>(
+        `/api/valuable-backlink-checker`,
         {
           url: formattedUrl,
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
+          vendor: 'gemini',
         }
       );
 
-      setResults(data.data);
+      setResults(data);
       setIsChecking(false);
 
       toast({
         title: "Backlink analysis complete",
-        description: `Found ${data.data.summary.valuableCount} valuable backlinks out of ${data.data.backlinksAnalyzed.length} analyzed.`,
+        description: `Found ${data.summary.valuableCount} valuable backlinks out of ${data.backlinksAnalyzed.length} analyzed. Quality score: ${data.quality_score}/100`,
       });
     } catch (error) {
       toast({

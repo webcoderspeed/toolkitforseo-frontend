@@ -43,23 +43,19 @@ export default function KeywordCompetitionTool() {
     setIsChecking(true);
 
     try {
-      const { data } = await api.post<KeywordResearchResponse>(
-        "keyword-research/keyword-competition",
+      const { data } = await api.post<KeywordResearchData>(
+        "/api/keyword-competition",
         {
-          text: keyword,
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
+          keyword: keyword,
+          vendor: 'gemini',
         }
       );
 
-      setResults(data.data);
+      setResults(data);
 
       toast({
         title: "Keyword research completed",
-        description: `Results fetched successfully${(data.data?.keywords ?? [])?.length ? ` (${(data.data?.keywords ?? []).length} keywords found)` : ""}.`,
+        description: `Results fetched successfully${(data?.keywords ?? [])?.length ? ` (${(data?.keywords ?? []).length} competitors found)` : ""}.`,
         variant: "default",
       });
     } catch (error) {

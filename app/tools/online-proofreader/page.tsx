@@ -10,11 +10,13 @@ import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { api } from "@/store"
+import { ProofreadingResult } from "@/store/types/online-proofreader.types"
 
 export default function OnlineProofreader() {
   const { toast } = useToast()
   const [originalText, setOriginalText] = useState("")
-  const [correctedText, setCorrectedText] = useState("")
+  const [results, setResults] = useState<ProofreadingResult | null>(null)
   const [isProofreading, setIsProofreading] = useState(false)
   const [activeTab, setActiveTab] = useState("original")
   const [settings, setSettings] = useState({
@@ -37,56 +39,35 @@ export default function OnlineProofreader() {
 
     setIsProofreading(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock corrected text
-      let corrected = originalText
+    try {
+      const { data } = await api.post<ProofreadingResult>('/api/online-proofreader', {
+        text: originalText,
+        settings,
+        vendor: 'gemini',
+      });
 
-      // Simple mock corrections
-      if (settings.spelling) {
-        corrected = corrected.replace(/teh/g, "the")
-        corrected = corrected.replace(/thier/g, "their")
-      }
-
-      if (settings.grammar) {
-        corrected = corrected.replace(/me and my/gi, "my")
-        corrected = corrected.replace(/they is/gi, "they are")
-      }
-
-      if (settings.punctuation) {
-        corrected = corrected.replace(/\s+,/g, ",")
-        corrected = corrected.replace(/\s+\./g, ".")
-      }
-
-      if (settings.wordChoice) {
-        corrected = corrected.replace(/very good/gi, "excellent")
-        corrected = corrected.replace(/very bad/gi, "terrible")
-      }
-
-      if (settings.style) {
-        corrected = corrected.replace(/in order to/gi, "to")
-        corrected = corrected.replace(/due to the fact that/gi, "because")
-      }
-
-      // If no changes were made, add a note
-      if (corrected === originalText) {
-        corrected = originalText + "\n\n[No errors found. Your text appears to be correct.]"
-      }
-
-      setCorrectedText(corrected)
-      setActiveTab("corrected")
-      setIsProofreading(false)
-
+      setResults(data);
+      setActiveTab("corrected");
       toast({
         title: "Proofreading complete",
-        description: "Your text has been checked and corrected.",
-      })
-    }, 3000)
+        description: `Found ${data.corrections_made} corrections. Quality score: ${data.overall_quality_score}/100`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to proofread text:", error);
+      toast({
+        title: "Failed to proofread text",
+        description: "An error occurred while proofreading the text. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProofreading(false);
+    }
   }
 
   const handleClear = () => {
     setOriginalText("")
-    setCorrectedText("")
+    setResults(null)
     setActiveTab("original")
   }
 
@@ -125,7 +106,7 @@ export default function OnlineProofreader() {
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid grid-cols-2 mb-4">
                   <TabsTrigger value="original">Original</TabsTrigger>
-                  <TabsTrigger value="corrected" disabled={!correctedText}>
+                  <TabsTrigger value="corrected" disabled={!results}>
                     Corrected
                   </TabsTrigger>
                 </TabsList>
@@ -138,12 +119,49 @@ export default function OnlineProofreader() {
                   />
                 </TabsContent>
                 <TabsContent value="corrected" className="mt-0">
-                  <Textarea
-                    placeholder="Corrected text will appear here..."
-                    className="min-h-[300px] resize-none"
-                    value={correctedText}
-                    readOnly
-                  />
+                  <div className="space-y-4">
+                    <Textarea
+                      placeholder="Corrected text will appear here..."
+                      className="min-h-[300px] resize-none"
+                      value={results?.corrected_text || ""}
+                      readOnly
+                    />
+                    {results && (
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="bg-slate-50 p-3 rounded-lg">
+                          <div className="font-medium text-slate-700">Quality Score</div>
+                          <div className="text-2xl font-bold text-emerald-600">{results.overall_quality_score}/100</div>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-lg">
+                          <div className="font-medium text-slate-700">Corrections Made</div>
+                          <div className="text-2xl font-bold text-blue-600">{results.corrections_made}</div>
+                        </div>
+                      </div>
+                    )}
+                    {results && results.errors.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-slate-700">Errors Found:</h4>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {results.errors.map((error, index) => (
+                             <div key={index} className="bg-red-50 border border-red-200 p-3 rounded-lg">
+                               <div className="flex justify-between items-start">
+                                 <div>
+                                   <div className="font-medium text-red-800 capitalize">{error.type.replace('_', ' ')}</div>
+                                   <div className="text-sm text-red-600">{error.explanation}</div>
+                                   <div className="text-xs text-slate-500 mt-1">
+                                     Original: "{error.text}" → Suggested: "{error.suggestion}"
+                                   </div>
+                                 </div>
+                                 <div className="text-xs text-red-500 bg-red-100 px-2 py-1 rounded capitalize">
+                                   {error.severity}
+                                 </div>
+                               </div>
+                             </div>
+                           ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </TabsContent>
               </Tabs>
             </CardContent>

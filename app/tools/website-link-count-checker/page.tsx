@@ -19,7 +19,6 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/store";
 import {
   IWebsiteLinkCountChecker,
-  IWebsiteLinkCountCheckerResponse,
 } from "@/store/types";
 
 export default function WebsiteLinkCountChecker() {
@@ -59,24 +58,20 @@ export default function WebsiteLinkCountChecker() {
     setIsChecking(true);
 
     try {
-      const { data } = await api.post<IWebsiteLinkCountCheckerResponse>(
-        `backlink-analysis/website-link-count-checker`,
+      const { data } = await api.post<IWebsiteLinkCountChecker>(
+        `/api/website-link-count-checker`,
         {
           url: formattedUrl,
-        },
-        {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
-          },
+          vendor: 'gemini',
         }
       );
 
-      setResults(data.data);
+      setResults(data);
       setIsChecking(false);
 
       toast({
         title: "Link count check complete",
-        description: `Found ${data.data.totalLinks} links on your website.`,
+        description: `Found ${data.totalLinks} links on your website (${data.internalLinks} internal, ${data.externalLinks} external).`,
       });
 
     } catch (error) {
