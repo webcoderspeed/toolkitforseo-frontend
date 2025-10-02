@@ -8,17 +8,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { Progress } from "@/components/ui/progress"
+import { api } from "@/store/api"
+import { AIContentDetectionResult } from "@/store/types/ai-content-detector.types"
 
 export default function AIContentDetector() {
   const { toast } = useToast()
   const [text, setText] = useState("")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [results, setResults] = useState<null | {
-    aiProbability: number
-    humanProbability: number
-    verdict: "AI-generated" | "Human-written" | "Possibly AI-generated"
-    confidence: "high" | "medium" | "low"
-  }>(null)
+  const [results, setResults] = useState<AIContentDetectionResult | null>(null)
 
   const handleAnalyze = async () => {
     if (!text.trim()) {
@@ -41,46 +38,28 @@ export default function AIContentDetector() {
 
     setIsAnalyzing(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock results
-      const aiProb = Math.floor(Math.random() * 100)
-      const humanProb = 100 - aiProb
-
-      let verdict: "AI-generated" | "Human-written" | "Possibly AI-generated"
-      let confidence: "high" | "medium" | "low"
-
-      if (aiProb > 75) {
-        verdict = "AI-generated"
-        confidence = "high"
-      } else if (aiProb > 60) {
-        verdict = "Possibly AI-generated"
-        confidence = "medium"
-      } else if (aiProb > 40) {
-        verdict = "Possibly AI-generated"
-        confidence = "low"
-      } else if (aiProb > 25) {
-        verdict = "Human-written"
-        confidence = "medium"
-      } else {
-        verdict = "Human-written"
-        confidence = "high"
-      }
-
-      setResults({
-        aiProbability: aiProb,
-        humanProbability: humanProb,
-        verdict,
-        confidence,
+    try {
+      const response = await api.post('/api/ai-content-detector', {
+        text,
+        vendor: 'gemini'
       })
 
-      setIsAnalyzing(false)
+      setResults(response.data)
 
       toast({
         title: "Analysis complete",
-        description: `Content analyzed with ${confidence} confidence.`,
+        description: "Content has been analyzed successfully.",
       })
-    }, 3000)
+    } catch (error) {
+      console.error('Error analyzing content:', error)
+      toast({
+        title: "Analysis failed",
+        description: "Failed to analyze content. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   const handleClear = () => {
@@ -101,29 +80,29 @@ export default function AIContentDetector() {
     }
   }
 
-  const getVerdictColor = (verdict: "AI-generated" | "Human-written" | "Possibly AI-generated") => {
+  const getVerdictColor = (verdict: string) => {
     switch (verdict) {
-      case "AI-generated":
+      case "ai_generated":
         return "text-red-600"
-      case "Human-written":
-        return "text-emerald-600"
-      case "Possibly AI-generated":
-        return "text-amber-600"
+      case "human_written":
+        return "text-green-600"
+      case "possibly_ai_generated":
+        return "text-yellow-600"
       default:
-        return ""
+        return "text-gray-600"
     }
   }
 
-  const getVerdictIcon = (verdict: "AI-generated" | "Human-written" | "Possibly AI-generated") => {
+  const getVerdictIcon = (verdict: string) => {
     switch (verdict) {
-      case "AI-generated":
-        return <Bot className="h-8 w-8 text-red-600" />
-      case "Human-written":
-        return <CheckCircle className="h-8 w-8 text-emerald-600" />
-      case "Possibly AI-generated":
-        return <AlertTriangle className="h-8 w-8 text-amber-600" />
+      case "ai_generated":
+        return <Bot className="h-5 w-5 text-red-600" />
+      case "human_written":
+        return <CheckCircle className="h-5 w-5 text-green-600" />
+      case "possibly_ai_generated":
+        return <AlertTriangle className="h-5 w-5 text-yellow-600" />
       default:
-        return null
+        return <Bot className="h-5 w-5 text-gray-600" />
     }
   }
 
@@ -224,11 +203,13 @@ export default function AIContentDetector() {
                 <CardContent className="space-y-4">
                   <div className="text-center">
                     <div className="inline-flex items-center justify-center p-4 bg-slate-100 rounded-full mb-2">
-                      {getVerdictIcon(results.verdict)}
+                      {getVerdictIcon(results.ai_probability > 70 ? "ai_generated" : results.ai_probability > 30 ? "possibly_ai_generated" : "human_written")}
                     </div>
-                    <h3 className={`text-2xl font-bold ${getVerdictColor(results.verdict)}`}>{results.verdict}</h3>
-                    <p className={`text-sm mt-1 ${getConfidenceColor(results.confidence)}`}>
-                      {results.confidence.charAt(0).toUpperCase() + results.confidence.slice(1)} confidence
+                    <h3 className={`text-2xl font-bold ${getVerdictColor(results.ai_probability > 70 ? "ai_generated" : results.ai_probability > 30 ? "possibly_ai_generated" : "human_written")}`}>
+                      {results.ai_probability > 70 ? "AI Generated" : results.ai_probability > 30 ? "Possibly AI Generated" : "Human Written"}
+                    </h3>
+                    <p className={`text-sm mt-1 ${getConfidenceColor(results.ai_probability > 70 ? "high" : results.ai_probability > 30 ? "medium" : "low")}`}>
+                      {results.ai_probability > 70 ? "High" : results.ai_probability > 30 ? "Medium" : "Low"} confidence
                     </p>
                   </div>
 
@@ -236,17 +217,63 @@ export default function AIContentDetector() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>AI Probability</span>
-                        <span className="font-medium">{results.aiProbability}%</span>
+                        <span className="font-medium">{results.ai_probability}%</span>
                       </div>
-                      <Progress value={results.aiProbability} className="h-2 bg-slate-200" />
+                      <Progress value={results.ai_probability} className="h-2 bg-slate-200" />
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>Human Probability</span>
-                        <span className="font-medium">{results.humanProbability}%</span>
+                        <span className="font-medium">{results.human_probability}%</span>
                       </div>
-                      <Progress value={results.humanProbability} className="h-2 bg-slate-200" />
+                      <Progress value={results.human_probability} className="h-2 bg-slate-200" />
+                    </div>
+
+                    {/* Additional Analysis */}
+                    <div className="mt-6 space-y-4">
+                      <h4 className="text-lg font-semibold">Detailed Analysis</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3 bg-slate-50 rounded-lg">
+                          <h5 className="font-medium text-sm mb-1">Sentence Structure</h5>
+                          <p className="text-sm text-muted-foreground">{results.analysis.sentence_structure}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-slate-50 rounded-lg">
+                          <h5 className="font-medium text-sm mb-1">Vocabulary Complexity</h5>
+                          <p className="text-sm text-muted-foreground">{results.analysis.vocabulary_complexity}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-slate-50 rounded-lg">
+                          <h5 className="font-medium text-sm mb-1">Writing Style</h5>
+                          <p className="text-sm text-muted-foreground">{results.analysis.writing_style}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-slate-50 rounded-lg">
+                          <h5 className="font-medium text-sm mb-1">Repetition Patterns</h5>
+                          <p className="text-sm text-muted-foreground">{results.analysis.repetition_patterns}</p>
+                        </div>
+                      </div>
+
+                      {results.detected_patterns.length > 0 && (
+                        <div className="p-3 bg-slate-50 rounded-lg">
+                          <h5 className="font-medium text-sm mb-2">Detected AI Patterns</h5>
+                          <ul className="text-sm text-muted-foreground space-y-1">
+                            {results.detected_patterns.map((pattern, index) => (
+                              <li key={index} className="flex items-start gap-2">
+                                <span className="text-red-500 mt-1">•</span>
+                                {pattern}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <h5 className="font-medium text-sm mb-1 text-blue-800">Recommendation</h5>
+                        <p className="text-sm text-blue-700">{results.recommendation}</p>
+                      </div>
                     </div>
                   </div>
                 </CardContent>

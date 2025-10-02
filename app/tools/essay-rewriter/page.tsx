@@ -11,13 +11,15 @@ import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { api } from "@/store/api"
+import { EssayRewriteResult } from "@/store/types/essay-rewriter.types"
 
 export default function EssayRewriter() {
   const { toast } = useToast()
   const [originalText, setOriginalText] = useState("")
   const [rewrittenText, setRewrittenText] = useState("")
-  const [academicLevel, setAcademicLevel] = useState("college")
-  const [tone, setTone] = useState("formal")
+  const [academicLevel, setAcademicLevel] = useState("undergraduate")
+  const [essayType, setEssayType] = useState("expository")
   const [isRewriting, setIsRewriting] = useState(false)
   const [activeTab, setActiveTab] = useState("original")
 
@@ -42,28 +44,31 @@ export default function EssayRewriter() {
 
     setIsRewriting(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock rewritten text based on academic level and tone
-      let rewritten = ""
+    try {
+      const response = await api.post('/api/essay-rewriter', {
+        text: originalText,
+        essay_type: essayType,
+        academic_level: academicLevel,
+        vendor: 'gemini'
+      })
 
-      if (academicLevel === "high-school") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [High school level essay with ${tone} tone. The content would be rewritten to match the appropriate academic level with simpler vocabulary and straightforward structure.]`
-      } else if (academicLevel === "college") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [College level essay with ${tone} tone. The content would be rewritten with more sophisticated vocabulary, complex sentence structures, and deeper analysis.]`
-      } else if (academicLevel === "graduate") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [Graduate level essay with ${tone} tone. The content would be rewritten with advanced terminology, nuanced arguments, and scholarly approach appropriate for graduate-level work.]`
-      }
-
-      setRewrittenText(rewritten)
+      setRewrittenText(response.data.rewritten_text)
       setActiveTab("rewritten")
-      setIsRewriting(false)
 
       toast({
         title: "Rewrite complete",
         description: "Your essay has been rewritten successfully.",
       })
-    }, 4000)
+    } catch (error) {
+      console.error('Error rewriting essay:', error)
+      toast({
+        title: "Rewrite failed",
+        description: "Failed to rewrite essay. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRewriting(false)
+    }
   }
 
   const handleClear = () => {
@@ -163,24 +168,38 @@ export default function EssayRewriter() {
                     <SelectValue placeholder="Select academic level" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="high-school">High School</SelectItem>
-                    <SelectItem value="college">College/University</SelectItem>
+                    <SelectItem value="high_school">High School</SelectItem>
+                    <SelectItem value="undergraduate">College/University</SelectItem>
                     <SelectItem value="graduate">Graduate/Professional</SelectItem>
+                    <SelectItem value="professional">Professional</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  {academicLevel === "high-school" && "Appropriate for high school assignments"}
-                  {academicLevel === "college" && "Suitable for undergraduate college papers"}
-                  {academicLevel === "graduate" && "Advanced level for graduate or professional work"}
+                  {academicLevel === "high_school" && "Appropriate for high school assignments"}
+                  {academicLevel === "undergraduate" && "Suitable for undergraduate college papers"}
+                  {academicLevel === "graduate" && "Advanced level for graduate work"}
+                  {academicLevel === "professional" && "Professional level writing"}
                 </p>
               </div>
 
               <div className="space-y-3">
-                <label className="text-sm font-medium">Writing Tone</label>
-                <RadioGroup value={tone} onValueChange={setTone} className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Essay Type</label>
+                <RadioGroup value={essayType} onValueChange={setEssayType} className="flex flex-col space-y-2">
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="formal" id="formal" />
-                    <Label htmlFor="formal">Formal</Label>
+                    <RadioGroupItem value="argumentative" id="argumentative" />
+                    <Label htmlFor="argumentative">Argumentative</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="descriptive" id="descriptive" />
+                    <Label htmlFor="descriptive">Descriptive</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="narrative" id="narrative" />
+                    <Label htmlFor="narrative">Narrative</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="expository" id="expository" />
+                    <Label htmlFor="expository">Expository</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="persuasive" id="persuasive" />
@@ -189,10 +208,6 @@ export default function EssayRewriter() {
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="analytical" id="analytical" />
                     <Label htmlFor="analytical">Analytical</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="critical" id="critical" />
-                    <Label htmlFor="critical">Critical</Label>
                   </div>
                 </RadioGroup>
               </div>

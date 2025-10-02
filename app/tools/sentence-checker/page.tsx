@@ -8,22 +8,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { api } from "@/store/api"
+import { SentenceCheckResult } from "@/store/types/sentence-checker.types"
 
 export default function SentenceChecker() {
   const { toast } = useToast()
   const [text, setText] = useState("")
+  const [checkType, setCheckType] = useState("grammar")
   const [isChecking, setIsChecking] = useState(false)
-  const [results, setResults] = useState<null | {
-    sentences: {
-      text: string
-      issues: {
-        type: "grammar" | "structure" | "clarity" | "none"
-        description: string
-        suggestion: string
-      }[]
-    }[]
-    score: number
-  }>(null)
+  const [results, setResults] = useState<SentenceCheckResult | null>(null)
 
   const handleCheck = async () => {
     if (!text.trim()) {
@@ -37,77 +31,32 @@ export default function SentenceChecker() {
 
     setIsChecking(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Split text into sentences (simple split by period for demo)
-      const sentences = text
-        .split(".")
-        .filter((s) => s.trim().length > 0)
-        .map((s) => s.trim() + ".")
-
-      // Mock sentence check results
-      const mockResults = {
-        sentences: sentences.map((sentence) => {
-          // Randomly decide if sentence has issues
-          const hasIssue = Math.random() > 0.5
-
-          if (!hasIssue) {
-            return {
-              text: sentence,
-              issues: [
-                {
-                  type: "none" as const,
-                  description: "No issues found",
-                  suggestion: "",
-                },
-              ],
-            }
-          }
-
-          // Random issue type
-          const issueTypes = ["grammar", "structure", "clarity"] as const
-          const type = issueTypes[Math.floor(Math.random() * issueTypes.length)]
-
-          let description = ""
-          let suggestion = ""
-
-          switch (type) {
-            case "grammar":
-              description = "Grammatical error in sentence structure"
-              suggestion = "Revised sentence with correct grammar"
-              break
-            case "structure":
-              description = "Sentence is too complex or run-on"
-              suggestion = "Split into two clearer sentences"
-              break
-            case "clarity":
-              description = "Meaning is unclear or ambiguous"
-              suggestion = "More precise wording for clarity"
-              break
-          }
-
-          return {
-            text: sentence,
-            issues: [
-              {
-                type,
-                description,
-                suggestion,
-              },
-            ],
-          }
-        }),
-        score: Math.floor(Math.random() * 30) + 70, // Score between 70-100
-      }
-
-      setResults(mockResults)
-      setIsChecking(false)
-
-      toast({
-        title: "Sentence check complete",
-        description: `Analyzed ${mockResults.sentences.length} sentences.`,
+    try {
+      const response = await api.post('/api/sentence-checker', {
+        sentence: text,
+        check_type: checkType,
+        vendor: 'gemini'
       })
-    }, 3000)
+
+      if (response.data.success) {
+        setResults(response.data.data)
+        toast({
+          title: "Sentence check complete",
+          description: "Your sentence has been analyzed successfully.",
+        })
+      } else {
+        throw new Error('Failed to check sentence')
+      }
+    } catch (error) {
+      console.error('Error checking sentence:', error)
+      toast({
+        title: "Error",
+        description: "Failed to check sentence. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsChecking(false)
+    }
   }
 
   const handleClear = () => {
@@ -153,13 +102,30 @@ export default function SentenceChecker() {
             <CardTitle>Enter your text</CardTitle>
             <CardDescription>Paste your content below to check each sentence</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Enter or paste your text here..."
-              className="min-h-[200px] resize-none"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Check Type</label>
+              <Select value={checkType} onValueChange={setCheckType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select check type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grammar">Grammar Check</SelectItem>
+                  <SelectItem value="style">Style Check</SelectItem>
+                  <SelectItem value="clarity">Clarity Check</SelectItem>
+                  <SelectItem value="all">All Checks</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Sentence</label>
+              <Textarea
+                placeholder="Enter your sentence here..."
+                className="min-h-[200px] resize-none"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            </div>
           </CardContent>
           <CardFooter className="flex justify-between">
             <div className="text-sm text-slate-500">{text.length} characters</div>
@@ -178,7 +144,7 @@ export default function SentenceChecker() {
                     Checking...
                   </>
                 ) : (
-                  "Check Sentences"
+                  "Check Sentence"
                 )}
               </Button>
             </div>
@@ -198,7 +164,7 @@ export default function SentenceChecker() {
                   <CardDescription>Sentence analysis results</CardDescription>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-emerald-600">{results.score}/100</div>
+                  <div className="text-2xl font-bold text-emerald-600">{results.overall_score}/100</div>
                   <div className="text-xs text-slate-500">Overall Score</div>
                 </div>
               </CardHeader>
@@ -221,38 +187,125 @@ export default function SentenceChecker() {
 
                   <div className="space-y-4 mt-4">
                     <h3 className="font-medium">Sentence Analysis:</h3>
-                    {results.sentences.map((sentence, index) => (
-                      <div key={index} className="border rounded-md p-3 bg-slate-50">
-                        <div className="flex justify-between items-start mb-2">
-                          <Badge variant="outline" className={getIssueTypeColor(sentence.issues[0].type)}>
-                            {sentence.issues[0].type === "none"
-                              ? "No Issues"
-                              : sentence.issues[0].type.charAt(0).toUpperCase() + sentence.issues[0].type.slice(1)}
-                          </Badge>
-                          <span className="text-xs text-slate-500">Sentence {index + 1}</span>
+                    <div className="border rounded-md p-3 bg-slate-50">
+                      <div className="mb-2">
+                        <div className="text-sm font-medium">Original Sentence:</div>
+                        <div className="text-sm bg-white p-2 rounded border border-slate-200 mt-1">
+                          {results.original_sentence}
                         </div>
+                      </div>
+                      <div className="mb-2">
+                        <div className="text-sm font-medium">Corrected Sentence:</div>
+                        <div className="text-sm bg-white p-2 rounded border border-emerald-200 text-emerald-700 mt-1">
+                          {results.corrected_sentence}
+                        </div>
+                      </div>
+                      
+                      {results.errors.length > 0 && (
                         <div className="mb-2">
-                          <div className="text-sm font-medium">Original:</div>
-                          <div className="text-sm bg-white p-2 rounded border border-slate-200 mt-1">
-                            {sentence.text}
+                          <div className="text-sm font-medium">Errors Found:</div>
+                          <div className="space-y-2 mt-1">
+                            {results.errors.map((error, index) => (
+                              <div key={index} className="bg-red-50 p-2 rounded border border-red-200">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+                                    {error.type}
+                                  </Badge>
+                                  <Badge variant="outline" className={`${
+                                    error.severity === 'high' ? 'bg-red-100 text-red-800' :
+                                    error.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {error.severity}
+                                  </Badge>
+                                </div>
+                                <div className="text-sm text-slate-700">{error.message}</div>
+                                <div className="text-sm text-emerald-700 mt-1">
+                                  <strong>Suggestion:</strong> {error.suggestion}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        {sentence.issues[0].type !== "none" && (
-                          <>
-                            <div className="mb-2">
-                              <div className="text-sm font-medium">Issue:</div>
-                              <div className="text-sm text-slate-700 mt-1">{sentence.issues[0].description}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium">Suggestion:</div>
-                              <div className="text-sm bg-white p-2 rounded border border-emerald-200 text-emerald-700 mt-1">
-                                {sentence.issues[0].suggestion}
-                              </div>
-                            </div>
-                          </>
-                        )}
+                      )}
+                      
+                      {results.improvements.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-sm font-medium">Improvements:</div>
+                          <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
+                            {results.improvements.map((improvement, index) => (
+                              <li key={index}>{improvement}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <div className="text-sm font-medium">Readability Score:</div>
+                          <div className="text-lg font-bold text-blue-600">{results.readability_score}/100</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">Complexity:</div>
+                          <Badge variant="outline" className={`${
+                            results.complexity_level === 'simple' ? 'bg-green-100 text-green-800' :
+                            results.complexity_level === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {results.complexity_level}
+                          </Badge>
+                        </div>
                       </div>
-                    ))}
+                      
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div>
+                          <div className="text-sm font-medium">Word Count:</div>
+                          <div className="text-sm text-slate-600">{results.word_count}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">Character Count:</div>
+                          <div className="text-sm text-slate-600">{results.character_count}</div>
+                        </div>
+                      </div>
+                      
+                      {(results.suggestions.clarity.length > 0 || results.suggestions.conciseness.length > 0 || results.suggestions.style.length > 0) && (
+                        <div className="mt-4">
+                          <div className="text-sm font-medium mb-2">Additional Suggestions:</div>
+                          <div className="space-y-3">
+                            {results.suggestions.clarity.length > 0 && (
+                              <div>
+                                <div className="text-sm font-medium text-blue-700">Clarity:</div>
+                                <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
+                                  {results.suggestions.clarity.map((suggestion, index) => (
+                                    <li key={index}>{suggestion}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {results.suggestions.conciseness.length > 0 && (
+                              <div>
+                                <div className="text-sm font-medium text-green-700">Conciseness:</div>
+                                <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
+                                  {results.suggestions.conciseness.map((suggestion, index) => (
+                                    <li key={index}>{suggestion}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {results.suggestions.style.length > 0 && (
+                              <div>
+                                <div className="text-sm font-medium text-purple-700">Style:</div>
+                                <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
+                                  {results.suggestions.style.map((suggestion, index) => (
+                                    <li key={index}>{suggestion}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>

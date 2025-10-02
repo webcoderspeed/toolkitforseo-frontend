@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { api } from "@/store/api"
+import { ArticleRewriteResult } from "@/store/types/article-rewriter.types"
 
 export default function ArticleRewriter() {
   const { toast } = useToast()
@@ -30,28 +32,30 @@ export default function ArticleRewriter() {
 
     setIsRewriting(true)
 
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Mock rewritten text based on style
-      let rewritten = ""
+    try {
+      const response = await api.post('/api/article-rewriter', {
+        text: originalText,
+        style,
+        vendor: 'gemini'
+      })
 
-      if (style === "professional") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [Professional rewrite of your content would appear here with formal language and industry-specific terminology. The content would maintain the same meaning while using more sophisticated vocabulary and structure.]`
-      } else if (style === "casual") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [Casual rewrite of your content would appear here with conversational tone and approachable language. The content would feel friendly and easy to read while maintaining the original meaning.]`
-      } else if (style === "creative") {
-        rewritten = `${originalText.split(" ").slice(0, 5).join(" ")}... [Creative rewrite of your content would appear here with engaging language and vivid descriptions. The content would be more expressive and use metaphors or analogies where appropriate.]`
-      }
-
-      setRewrittenText(rewritten)
+      setRewrittenText(response.data.rewritten_text)
       setActiveTab("rewritten")
-      setIsRewriting(false)
 
       toast({
         title: "Rewrite complete",
         description: "Your article has been rewritten successfully.",
       })
-    }, 3000)
+    } catch (error) {
+      console.error('Error rewriting article:', error)
+      toast({
+        title: "Rewrite failed",
+        description: "Failed to rewrite article. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRewriting(false)
+    }
   }
 
   const handleClear = () => {
