@@ -132,6 +132,10 @@ export default function SSLChecker() {
   const [loading, setLoading] = useState(false);
   const [vendor, setVendor] = useState<'gemini' | 'openai'>('gemini');
 
+  const cleanDomain = (input: string) => {
+    return input.replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim();
+  };
+
   const checkSSL = async () => {
     if (!domain) {
       toast.error('Domain is required');
@@ -146,7 +150,7 @@ export default function SSLChecker() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          domain: domain.replace(/^https?:\/\//, ''),
+          domain: cleanDomain(domain),
           port: parseInt(port),
           vendor
         }),
@@ -258,7 +262,7 @@ export default function SSLChecker() {
                   <Input
                     id="domain"
                     value={domain}
-                    onChange={(e) => setDomain(e.target.value)}
+                    onChange={(e) => setDomain(cleanDomain(e.target.value))}
                     placeholder="example.com"
                   />
                 </div>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
-import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import * as tls from 'tls';
+import * as crypto from 'crypto';
 
 interface SSLRequest {
   domain: string;
@@ -123,340 +124,597 @@ interface SSLAnalysis {
   };
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  try {
-    const { domain, port = 443, vendor = 'gemini' } = await request.json() as SSLRequest;
-    // Get vendor-specific API key
-    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+interface SSLCheckResult {
+  ssl_enabled: boolean;
+  certificate?: any;
+  error?: string;
+  connection_time: number;
+  handshake_time: number;
+  supported_protocols: string[];
+  cipher_suite?: string;
+}
+
+async function checkSSLCertificate(domain: string, port: number): Promise<SSLCheckResult> {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    let handshakeTime = 0;
     
-    if (!apiKey) {
-      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    const options = {
+      host: domain,
+      port: port,
+      servername: domain,
+      rejectUnauthorized: false, // We want to analyze even invalid certificates
+    };
+
+    const socket = tls.connect(options, () => {
+      handshakeTime = Date.now() - startTime;
+      const certificate = socket.getPeerCertificate(true);
+      const cipher = socket.getCipher();
+      const protocol = socket.getProtocol();
+      
+      socket.end();
+      
+      resolve({
+        ssl_enabled: true,
+        certificate,
+        connection_time: Date.now() - startTime,
+        handshake_time: handshakeTime,
+        supported_protocols: [protocol || 'unknown'],
+        cipher_suite: cipher ? `${cipher.name} (${cipher.version})` : undefined
+      });
+    });
+
+    socket.on('error', (error) => {
+      resolve({
+        ssl_enabled: false,
+        error: error.message,
+        connection_time: Date.now() - startTime,
+        handshake_time: 0,
+        supported_protocols: []
+      });
+    });
+
+    socket.setTimeout(10000, () => {
+      socket.destroy();
+      resolve({
+        ssl_enabled: false,
+        error: 'Connection timeout',
+        connection_time: Date.now() - startTime,
+        handshake_time: 0,
+        supported_protocols: []
+      });
+    });
+  });
+}
+
+async function checkHTTPSHeaders(domain: string): Promise<{ hsts: any; ct: any }> {
+  try {
+    const response = await fetch(`https://${domain}`, {
+      method: 'HEAD',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; SSL-Checker/1.0)'
+      }
+    });
+
+    const hstsHeader = response.headers.get('strict-transport-security');
+    const ctHeader = response.headers.get('expect-ct');
+
+    const hsts = {
+      enabled: !!hstsHeader,
+      max_age: 0,
+      include_subdomains: false,
+      preload: false
+    };
+
+    if (hstsHeader) {
+      const maxAgeMatch = hstsHeader.match(/max-age=(\d+)/);
+      if (maxAgeMatch) {
+        hsts.max_age = parseInt(maxAgeMatch[1]);
+      }
+      hsts.include_subdomains = hstsHeader.includes('includeSubDomains');
+      hsts.preload = hstsHeader.includes('preload');
     }
 
-    if (!domain) {
+    const ct = {
+      enabled: !!ctHeader,
+      logs_count: 0
+    };
+
+    return { hsts, ct };
+  } catch (error) {
+    return {
+      hsts: { enabled: false, max_age: 0, include_subdomains: false, preload: false },
+      ct: { enabled: false, logs_count: 0 }
+    };
+  }
+}
+
+function parseCertificate(cert: any): SSLCertificate {
+  const now = new Date();
+  const notAfter = new Date(cert.valid_to);
+  const notBefore = new Date(cert.valid_from);
+  const daysRemaining = Math.ceil((notAfter.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Parse subject and issuer
+  const parseSubject = (subjectObj: any) => {
+    // Handle both string and object formats
+    if (typeof subjectObj === 'string') {
+      const parts = subjectObj.split('/').filter(Boolean);
+      const result: any = {
+        common_name: '',
+        organization: '',
+        organizational_unit: '',
+        locality: '',
+        state: '',
+        country: ''
+      };
+
+      parts.forEach(part => {
+        const [key, value] = part.split('=');
+        switch (key) {
+          case 'CN': result.common_name = value; break;
+          case 'O': result.organization = value; break;
+          case 'OU': result.organizational_unit = value; break;
+          case 'L': result.locality = value; break;
+          case 'ST': result.state = value; break;
+          case 'C': result.country = value; break;
+        }
+      });
+
+      return result;
+    } else {
+      // Handle object format (which is what Node.js TLS actually returns)
+      return {
+        common_name: subjectObj?.CN || '',
+        organization: subjectObj?.O || '',
+        organizational_unit: subjectObj?.OU || '',
+        locality: subjectObj?.L || '',
+        state: subjectObj?.ST || '',
+        country: subjectObj?.C || ''
+      };
+    }
+  };
+
+  // Generate fingerprints
+  const certDER = cert.raw;
+  const sha1 = crypto.createHash('sha1').update(certDER).digest('hex').toUpperCase().match(/.{2}/g)?.join(':') || '';
+  const sha256 = crypto.createHash('sha256').update(certDER).digest('hex').toUpperCase().match(/.{2}/g)?.join(':') || '';
+  const md5 = crypto.createHash('md5').update(certDER).digest('hex').toUpperCase().match(/.{2}/g)?.join(':') || '';
+
+  // Parse extensions
+  const subjectAltNames = cert.subjectaltname ? 
+    cert.subjectaltname.split(', ').map((san: string) => san.replace('DNS:', '')) : [];
+
+  return {
+    subject: parseSubject(cert.subject),
+    issuer: parseSubject(cert.issuer),
+    validity: {
+      not_before: notBefore.toISOString().split('T')[0],
+      not_after: notAfter.toISOString().split('T')[0],
+      days_remaining: daysRemaining,
+      is_expired: now > notAfter,
+      is_valid: now >= notBefore && now <= notAfter
+    },
+    fingerprints: {
+      sha1,
+      sha256,
+      md5
+    },
+    public_key: {
+      algorithm: cert.pubkey?.asymmetricKeyType || 'unknown',
+      size: cert.pubkey?.asymmetricKeySize || 0,
+      exponent: '65537' // Default RSA exponent
+    },
+    signature_algorithm: cert.sigalg || 'unknown',
+    version: cert.version || 3,
+    serial_number: cert.serialNumber || '',
+    extensions: {
+      subject_alternative_names: subjectAltNames,
+      key_usage: cert.ext_key_usage ? 
+        (typeof cert.ext_key_usage === 'string' ? cert.ext_key_usage.split(', ') : [cert.ext_key_usage.toString()]) : [],
+      extended_key_usage: cert.ext_extended_key_usage ? 
+        (typeof cert.ext_extended_key_usage === 'string' ? cert.ext_extended_key_usage.split(', ') : [cert.ext_extended_key_usage.toString()]) : [],
+      basic_constraints: cert.ca ? 'CA:TRUE' : 'CA:FALSE',
+      authority_key_identifier: cert.authorityKeyIdentifier || '',
+      subject_key_identifier: cert.subjectKeyIdentifier || ''
+    }
+  };
+}
+
+function calculateSecurityGrade(sslData: any): string {
+  let score = 100;
+
+  // Certificate validity
+  if (!sslData.certificate.validity.is_valid) {
+    score -= 50;
+  } else if (sslData.certificate.validity.days_remaining < 30) {
+    score -= 20;
+  }
+
+  // Key size
+  const keySize = sslData.certificate.public_key.size;
+  if (keySize < 2048) {
+    score -= 30;
+  } else if (keySize < 4096) {
+    score -= 10;
+  }
+
+  // HSTS
+  if (!sslData.hsts.enabled) {
+    score -= 15;
+  }
+
+  // Protocol support (we'll estimate based on connection success)
+  if (!sslData.ssl_enabled) {
+    score = 0;
+  }
+
+  if (score >= 95) return 'A+';
+  if (score >= 90) return 'A';
+  if (score >= 80) return 'B';
+  if (score >= 70) return 'C';
+  if (score >= 60) return 'D';
+  return 'F';
+}
+
+function cleanDomain(input: string): string {
+  return input.replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim();
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  try {
+    const { domain: rawDomain, port = 443, vendor = 'gemini' } = await request.json() as SSLRequest;
+
+    if (!rawDomain) {
       return NextResponse.json(
         { error: 'Domain is required' },
         { status: 400 }
       );
     }
 
+    // Clean the domain to remove protocol and paths
+    const domain = cleanDomain(rawDomain);
+
+    // Get vendor-specific API key for AI analysis
+    const aiApiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
     
-
-    const aiVendor = AIVendorFactory.createVendor(vendor);
-    
-    const prompt = `You are an expert SSL/TLS security analyst and cybersecurity specialist. Analyze the SSL certificate and security configuration for the domain "${domain}" on port ${port}.
-
-Provide a comprehensive JSON response with the following structure:
-
-{
-  "domain": "${domain}",
-  "port": ${port},
-  "ssl_enabled": true/false,
-  "certificate": {
-    "subject": {
-      "common_name": "certificate common name",
-      "organization": "organization name",
-      "organizational_unit": "organizational unit",
-      "locality": "city",
-      "state": "state/province",
-      "country": "country code"
-    },
-    "issuer": {
-      "common_name": "CA name",
-      "organization": "CA organization",
-      "country": "CA country"
-    },
-    "validity": {
-      "not_before": "YYYY-MM-DD",
-      "not_after": "YYYY-MM-DD",
-      "days_remaining": <number>,
-      "is_expired": true/false,
-      "is_valid": true/false
-    },
-    "fingerprints": {
-      "sha1": "SHA1 fingerprint",
-      "sha256": "SHA256 fingerprint",
-      "md5": "MD5 fingerprint"
-    },
-    "public_key": {
-      "algorithm": "RSA|ECDSA|DSA",
-      "size": <key size in bits>,
-      "exponent": "public exponent"
-    },
-    "signature_algorithm": "signature algorithm",
-    "version": <certificate version>,
-    "serial_number": "certificate serial number",
-    "extensions": {
-      "subject_alternative_names": ["domain1", "domain2"],
-      "key_usage": ["Digital Signature", "Key Encipherment"],
-      "extended_key_usage": ["Server Authentication", "Client Authentication"],
-      "basic_constraints": "CA:FALSE",
-      "authority_key_identifier": "key identifier",
-      "subject_key_identifier": "key identifier"
+    if (!aiApiKey) {
+      return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
     }
-  },
-  "security_analysis": {
-    "overall_grade": "A+|A|B|C|D|F",
-    "protocol_support": {
-      "tls_1_0": true/false,
-      "tls_1_1": true/false,
-      "tls_1_2": true/false,
-      "tls_1_3": true/false,
-      "ssl_3_0": true/false,
-      "ssl_2_0": true/false
-    },
-    "cipher_suites": [
-      {
-        "name": "cipher suite name",
-        "strength": "strong|medium|weak",
-        "key_exchange": "key exchange method",
-        "authentication": "authentication method",
-        "encryption": "encryption algorithm",
-        "mac": "MAC algorithm"
-      }
-    ],
-    "vulnerabilities": [
-      {
-        "name": "vulnerability name",
-        "severity": "high|medium|low",
-        "description": "vulnerability description",
-        "recommendation": "how to fix"
-      }
-    ],
-    "hsts": {
-      "enabled": true/false,
-      "max_age": <seconds>,
-      "include_subdomains": true/false,
-      "preload": true/false
-    },
-    "certificate_transparency": {
-      "enabled": true/false,
-      "logs_count": <number of CT logs>
-    },
-    "ocsp_stapling": {
-      "enabled": true/false,
-      "status": "good|revoked|unknown"
-    }
-  },
-  "chain_analysis": {
-    "chain_length": <number of certificates in chain>,
-    "root_ca": "root CA name",
-    "intermediate_cas": ["intermediate CA 1", "intermediate CA 2"],
-    "chain_issues": ["issue 1", "issue 2"],
-    "trusted": true/false
-  },
-  "performance": {
-    "handshake_time": <milliseconds>,
-    "connection_time": <milliseconds>,
-    "total_time": <milliseconds>
-  },
-  "recommendations": [
-    {
-      "category": "Certificate|Protocol|Cipher|Configuration",
-      "priority": "high|medium|low",
-      "issue": "description of the issue",
-      "solution": "recommended solution"
-    }
-  ],
-  "compliance": {
-    "pci_dss": true/false,
-    "hipaa": true/false,
-    "gdpr": true/false,
-    "fips_140_2": true/false
-  }
-}
 
-Consider these factors in your analysis:
-- Certificate validity and expiration
-- Certificate chain trust and completeness
-- Supported TLS/SSL protocols (prefer TLS 1.2+ only)
-- Cipher suite strength and security
-- Known vulnerabilities (BEAST, CRIME, BREACH, POODLE, Heartbleed, etc.)
-- HSTS implementation
-- Certificate Transparency compliance
-- OCSP stapling configuration
-- Key size and algorithm strength
-- Certificate extensions and SANs
-- Performance metrics
-- Compliance with security standards
-- Security best practices
+    // Step 1: Perform real SSL certificate check
+    const [sslResult, httpsHeaders] = await Promise.all([
+      checkSSLCertificate(domain, port),
+      checkHTTPSHeaders(domain)
+    ]);
 
-Provide realistic data based on modern SSL/TLS security standards and common certificate configurations. Include specific recommendations for improving security posture.`;
-
-    try {
-      const response = await aiVendor.ask({
-        prompt,
-        api_key: apiKey,
-      });
-
-      const parsedResult = outputParser(response) as SSLAnalysis;
-      
-      if (parsedResult) {
-        return NextResponse.json(parsedResult);
-      } else {
-        throw new Error('Failed to parse AI response');
-      }
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      
-      // Fallback data with realistic SSL analysis
-      const currentDate = new Date();
-      const expiryDate = new Date(currentDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // 90 days from now
-      const daysRemaining = Math.floor((expiryDate.getTime() - currentDate.getTime()) / (24 * 60 * 60 * 1000));
-
-      const fallbackData: SSLAnalysis = {
-        domain: domain,
-        port: port,
-        ssl_enabled: true,
-        certificate: {
-          subject: {
-            common_name: domain,
-            organization: "Example Organization",
-            organizational_unit: "IT Department",
-            locality: "San Francisco",
-            state: "California",
-            country: "US"
-          },
-          issuer: {
-            common_name: "Let's Encrypt Authority X3",
-            organization: "Let's Encrypt",
-            country: "US"
-          },
-          validity: {
-            not_before: currentDate.toISOString().split('T')[0],
-            not_after: expiryDate.toISOString().split('T')[0],
-            days_remaining: daysRemaining,
-            is_expired: false,
-            is_valid: true
-          },
-          fingerprints: {
-            sha1: "A1:B2:C3:D4:E5:F6:07:08:09:0A:1B:2C:3D:4E:5F:60:71:82:93:A4",
-            sha256: "12:34:56:78:9A:BC:DE:F0:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88",
-            md5: "12:34:56:78:9A:BC:DE:F0:11:22:33:44:55:66:77:88"
-          },
-          public_key: {
-            algorithm: "RSA",
-            size: 2048,
-            exponent: "65537"
-          },
-          signature_algorithm: "SHA256withRSA",
-          version: 3,
-          serial_number: "03:A1:B2:C3:D4:E5:F6:07:08:09:0A:1B:2C:3D:4E:5F",
-          extensions: {
-            subject_alternative_names: [domain, `www.${domain}`],
-            key_usage: ["Digital Signature", "Key Encipherment"],
-            extended_key_usage: ["Server Authentication"],
-            basic_constraints: "CA:FALSE",
-            authority_key_identifier: "keyid:A8:4A:6A:63:04:7D:DD:BA:E6:D1:39:B7:A6:45:65:EF:F3:A8:EC:A1",
-            subject_key_identifier: "03:DE:50:35:56:D1:4C:BB:66:F0:A3:E2:1B:1B:C3:97:B2:3D:D1:55"
-          }
-        },
+    if (!sslResult.ssl_enabled) {
+      // Return basic analysis for non-SSL sites
+      const basicResult: SSLAnalysis = {
+        domain,
+        port,
+        ssl_enabled: false,
+        certificate: {} as SSLCertificate,
         security_analysis: {
-          overall_grade: "A",
+          overall_grade: 'F',
           protocol_support: {
             tls_1_0: false,
             tls_1_1: false,
-            tls_1_2: true,
-            tls_1_3: true,
+            tls_1_2: false,
+            tls_1_3: false,
             ssl_3_0: false,
             ssl_2_0: false
           },
-          cipher_suites: [
-            {
-              name: "TLS_AES_256_GCM_SHA384",
-              strength: "strong",
-              key_exchange: "ECDHE",
-              authentication: "RSA",
-              encryption: "AES-256-GCM",
-              mac: "SHA384"
-            },
-            {
-              name: "TLS_CHACHA20_POLY1305_SHA256",
-              strength: "strong",
-              key_exchange: "ECDHE",
-              authentication: "RSA",
-              encryption: "ChaCha20-Poly1305",
-              mac: "SHA256"
-            },
-            {
-              name: "TLS_AES_128_GCM_SHA256",
-              strength: "strong",
-              key_exchange: "ECDHE",
-              authentication: "RSA",
-              encryption: "AES-128-GCM",
-              mac: "SHA256"
-            }
-          ],
-          vulnerabilities: [
-            {
-              name: "Weak Cipher Suite",
-              severity: "low",
-              description: "Some older cipher suites are still supported",
-              recommendation: "Disable support for CBC cipher suites and prioritize AEAD ciphers"
-            }
-          ],
-          hsts: {
-            enabled: true,
-            max_age: 31536000,
-            include_subdomains: true,
-            preload: false
-          },
-          certificate_transparency: {
-            enabled: true,
-            logs_count: 3
-          },
-          ocsp_stapling: {
-            enabled: true,
-            status: "good"
-          }
+          cipher_suites: [],
+          vulnerabilities: [{
+            name: 'No SSL/TLS',
+            severity: 'critical',
+            description: 'The website does not support SSL/TLS encryption',
+            recommendation: 'Enable SSL/TLS certificate for secure communication'
+          }],
+          hsts: httpsHeaders.hsts,
+          certificate_transparency: httpsHeaders.ct,
+          ocsp_stapling: { enabled: false, status: 'not_available' }
         },
         chain_analysis: {
-          chain_length: 3,
-          root_ca: "ISRG Root X1",
-          intermediate_cas: ["R3"],
-          chain_issues: [],
-          trusted: true
+          chain_length: 0,
+          root_ca: '',
+          intermediate_cas: [],
+          chain_issues: ['SSL/TLS not enabled'],
+          trusted: false
         },
         performance: {
-          handshake_time: Math.floor(Math.random() * 100) + 50,
-          connection_time: Math.floor(Math.random() * 50) + 20,
-          total_time: Math.floor(Math.random() * 150) + 70
+          handshake_time: 0,
+          connection_time: sslResult.connection_time,
+          total_time: sslResult.connection_time
         },
         recommendations: [
           {
-            category: "Protocol",
-            priority: "medium",
-            issue: "TLS 1.0 and 1.1 should be completely disabled",
-            solution: "Configure server to only support TLS 1.2 and TLS 1.3"
-          },
-          {
-            category: "HSTS",
-            priority: "low",
-            issue: "HSTS preload is not enabled",
-            solution: "Add your domain to the HSTS preload list for enhanced security"
-          },
-          {
-            category: "Certificate",
-            priority: "low",
-            issue: "Certificate expires in less than 30 days",
-            solution: "Set up automatic certificate renewal to prevent expiration"
+            category: 'Security',
+            priority: 'critical',
+            issue: 'SSL/TLS not enabled',
+            solution: 'Install and configure an SSL/TLS certificate'
           }
         ],
         compliance: {
-          pci_dss: true,
-          hipaa: true,
-          gdpr: true,
+          pci_dss: false,
+          hipaa: false,
+          gdpr: false,
           fips_140_2: false
         }
       };
 
-      return NextResponse.json(fallbackData);
+      return NextResponse.json(basicResult);
     }
+
+    // Step 2: Parse certificate data
+    const certificate = parseCertificate(sslResult.certificate);
+    
+    // Step 3: Prepare real SSL data for AI analysis
+    const realSSLData = {
+      domain,
+      port,
+      ssl_enabled: sslResult.ssl_enabled,
+      certificate,
+      connection_time: sslResult.connection_time,
+      handshake_time: sslResult.handshake_time,
+      supported_protocols: sslResult.supported_protocols,
+      cipher_suite: sslResult.cipher_suite,
+      hsts: httpsHeaders.hsts,
+      certificate_transparency: httpsHeaders.ct,
+      security_grade: calculateSecurityGrade({ certificate, hsts: httpsHeaders.hsts, ssl_enabled: sslResult.ssl_enabled })
+    };
+
+    // Step 4: Use AI to enhance the analysis with expert insights
+    const aiVendor = AIVendorFactory.createVendor(vendor);
+    
+    const prompt = `Based on the following REAL SSL certificate and security data, provide enhanced analysis and recommendations in JSON format:
+
+REAL SSL DATA:
+- Domain: ${realSSLData.domain}
+- Port: ${realSSLData.port}
+- SSL Enabled: ${realSSLData.ssl_enabled}
+- Connection Time: ${realSSLData.connection_time}ms
+- Handshake Time: ${realSSLData.handshake_time}ms
+- Supported Protocols: ${JSON.stringify(realSSLData.supported_protocols)}
+- Cipher Suite: ${realSSLData.cipher_suite}
+- Security Grade: ${realSSLData.security_grade}
+
+CERTIFICATE DETAILS:
+${JSON.stringify(realSSLData.certificate, null, 2)}
+
+SECURITY HEADERS:
+- HSTS: ${JSON.stringify(realSSLData.hsts, null, 2)}
+- Certificate Transparency: ${JSON.stringify(realSSLData.certificate_transparency, null, 2)}
+
+Please provide enhanced SSL analysis in this JSON format:
+
+{
+  "domain": "${realSSLData.domain}",
+  "port": ${realSSLData.port},
+  "ssl_enabled": ${realSSLData.ssl_enabled},
+  "certificate": ${JSON.stringify(realSSLData.certificate)},
+  "security_analysis": {
+    "overall_grade": "${realSSLData.security_grade}",
+    "protocol_support": {
+      "tls_1_0": false,
+      "tls_1_1": false,
+      "tls_1_2": true,
+      "tls_1_3": true,
+      "ssl_3_0": false,
+      "ssl_2_0": false
+    },
+    "cipher_suites": [
+      // Based on real cipher suite data
+      {
+        "name": "Cipher suite name",
+        "strength": "strong|medium|weak",
+        "key_exchange": "Key exchange method",
+        "authentication": "Authentication method",
+        "encryption": "Encryption algorithm",
+        "mac": "MAC algorithm"
+      }
+    ],
+    "vulnerabilities": [
+      // Based on real certificate analysis
+    ],
+    "hsts": ${JSON.stringify(realSSLData.hsts)},
+    "certificate_transparency": ${JSON.stringify(realSSLData.certificate_transparency)},
+    "ocsp_stapling": {
+      "enabled": false,
+      "status": "not_checked"
+    }
+  },
+  "chain_analysis": {
+    "chain_length": 2,
+    "root_ca": "Root CA from certificate",
+    "intermediate_cas": ["Intermediate CAs"],
+    "chain_issues": ["Based on real certificate chain analysis"],
+    "trusted": ${realSSLData.certificate.validity.is_valid}
+  },
+  "performance": {
+    "handshake_time": ${realSSLData.handshake_time},
+    "connection_time": ${realSSLData.connection_time},
+    "total_time": ${realSSLData.connection_time}
+  },
+  "recommendations": [
+    // Actionable recommendations based on real findings
+    {
+      "category": "Security|Performance|Compliance",
+      "priority": "critical|high|medium|low",
+      "issue": "Specific issue found",
+      "solution": "Actionable solution"
+    }
+  ],
+  "compliance": {
+    "pci_dss": ${realSSLData.certificate.validity.is_valid && realSSLData.certificate.public_key.size >= 2048},
+    "hipaa": ${realSSLData.certificate.validity.is_valid && realSSLData.hsts.enabled},
+    "gdpr": ${realSSLData.certificate.validity.is_valid},
+    "fips_140_2": ${realSSLData.certificate.public_key.size >= 2048}
+  }
+}
+
+Focus on actionable recommendations based on the real SSL data. If the certificate is expiring soon, mention it. If HSTS is missing, recommend enabling it. If weak encryption is detected, suggest improvements.`;
+
+    try {
+      const response = await aiVendor.ask({
+        prompt,
+        api_key: aiApiKey,
+      });
+
+      // Try to parse AI response
+      let analysisResult: SSLAnalysis;
+      try {
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          analysisResult = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse AI response:', parseError);
+        // Fallback to basic analysis based on real data
+        analysisResult = generateBasicSSLAnalysis(realSSLData);
+      }
+
+      return NextResponse.json(analysisResult);
+
+    } catch (aiError) {
+      console.error('AI vendor error:', aiError);
+      // Fallback to basic analysis
+      const fallbackResult = generateBasicSSLAnalysis(realSSLData);
+      return NextResponse.json(fallbackResult);
+    }
+
   } catch (error) {
     console.error('Error in SSL Checker API:', error);
     return NextResponse.json(
-      { error: 'Failed to analyze SSL certificate' },
+      { error: 'Failed to check SSL certificate' },
       { status: 500 }
     );
   }
+}
+
+function generateBasicSSLAnalysis(realSSLData: any): SSLAnalysis {
+  const vulnerabilities: Array<{name: string; severity: string; description: string; recommendation: string}> = [];
+  const recommendations: Array<{category: string; priority: string; issue: string; solution: string}> = [];
+
+  // Check for common issues
+  if (!realSSLData.certificate.validity.is_valid) {
+    vulnerabilities.push({
+      name: 'Invalid Certificate',
+      severity: 'critical',
+      description: 'The SSL certificate is not valid (expired or not yet valid)',
+      recommendation: 'Renew or replace the SSL certificate immediately'
+    });
+    recommendations.push({
+      category: 'Security',
+      priority: 'critical',
+      issue: 'Invalid SSL certificate',
+      solution: 'Renew or replace the SSL certificate'
+    });
+  }
+
+  if (realSSLData.certificate.validity.days_remaining < 30 && realSSLData.certificate.validity.days_remaining > 0) {
+    vulnerabilities.push({
+      name: 'Certificate Expiring Soon',
+      severity: 'high',
+      description: `Certificate expires in ${realSSLData.certificate.validity.days_remaining} days`,
+      recommendation: 'Renew the certificate before it expires'
+    });
+    recommendations.push({
+      category: 'Security',
+      priority: 'high',
+      issue: 'Certificate expiring soon',
+      solution: 'Set up automatic certificate renewal'
+    });
+  }
+
+  if (realSSLData.certificate.public_key.size < 2048) {
+    vulnerabilities.push({
+      name: 'Weak Key Size',
+      severity: 'high',
+      description: `Key size is ${realSSLData.certificate.public_key.size} bits, which is considered weak`,
+      recommendation: 'Use at least 2048-bit RSA or 256-bit ECDSA keys'
+    });
+    recommendations.push({
+      category: 'Security',
+      priority: 'high',
+      issue: 'Weak encryption key size',
+      solution: 'Generate a new certificate with stronger key size'
+    });
+  }
+
+  if (!realSSLData.hsts.enabled) {
+    recommendations.push({
+      category: 'Security',
+      priority: 'medium',
+      issue: 'HSTS not enabled',
+      solution: 'Enable HTTP Strict Transport Security (HSTS) headers'
+    });
+  }
+
+  if (realSSLData.handshake_time > 1000) {
+    recommendations.push({
+      category: 'Performance',
+      priority: 'medium',
+      issue: 'Slow SSL handshake',
+      solution: 'Optimize SSL configuration and consider using ECDSA certificates'
+    });
+  }
+
+  // Determine protocol support based on successful connection
+  const protocolSupport = {
+    tls_1_0: false,
+    tls_1_1: false,
+    tls_1_2: realSSLData.supported_protocols.includes('TLSv1.2'),
+    tls_1_3: realSSLData.supported_protocols.includes('TLSv1.3'),
+    ssl_3_0: false,
+    ssl_2_0: false
+  };
+
+  // Generate cipher suite info based on real data
+  const cipherSuites = realSSLData.cipher_suite ? [{
+    name: realSSLData.cipher_suite,
+    strength: realSSLData.certificate.public_key.size >= 2048 ? 'strong' : 'weak',
+    key_exchange: 'ECDHE',
+    authentication: realSSLData.certificate.public_key.algorithm,
+    encryption: 'AES',
+    mac: 'SHA256'
+  }] : [];
+
+  return {
+    domain: realSSLData.domain,
+    port: realSSLData.port,
+    ssl_enabled: realSSLData.ssl_enabled,
+    certificate: realSSLData.certificate,
+    security_analysis: {
+      overall_grade: realSSLData.security_grade,
+      protocol_support: protocolSupport,
+      cipher_suites: cipherSuites,
+      vulnerabilities,
+      hsts: realSSLData.hsts,
+      certificate_transparency: realSSLData.certificate_transparency,
+      ocsp_stapling: { enabled: false, status: 'not_checked' }
+    },
+    chain_analysis: {
+      chain_length: 2,
+      root_ca: realSSLData.certificate.issuer.organization || 'Unknown CA',
+      intermediate_cas: [realSSLData.certificate.issuer.common_name || 'Unknown'],
+      chain_issues: vulnerabilities.length > 0 ? ['Certificate validation issues detected'] : [],
+      trusted: realSSLData.certificate.validity.is_valid
+    },
+    performance: {
+      handshake_time: realSSLData.handshake_time,
+      connection_time: realSSLData.connection_time,
+      total_time: realSSLData.connection_time
+    },
+    recommendations,
+    compliance: {
+      pci_dss: realSSLData.certificate.validity.is_valid && realSSLData.certificate.public_key.size >= 2048,
+      hipaa: realSSLData.certificate.validity.is_valid && realSSLData.hsts.enabled,
+      gdpr: realSSLData.certificate.validity.is_valid,
+      fips_140_2: realSSLData.certificate.public_key.size >= 2048
+    }
+  };
 }

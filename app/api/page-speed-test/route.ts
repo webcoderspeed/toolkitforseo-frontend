@@ -72,14 +72,152 @@ interface PageSpeedResult {
   };
 }
 
+async function getPageSpeedInsights(url: string, device: 'mobile' | 'desktop', apiKey: string) {
+  try {
+    const strategy = device === 'mobile' ? 'mobile' : 'desktop';
+    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${apiKey}&category=performance&category=accessibility&category=best-practices&category=seo`;
+    
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      throw new Error(`PageSpeed API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('PageSpeed Insights API error:', error);
+    return null;
+  }
+}
+
+function parsePageSpeedData(data: any, url: string, device: 'mobile' | 'desktop') {
+  const lighthouseResult = data.lighthouseResult;
+  const audits = lighthouseResult.audits;
+  const categories = lighthouseResult.categories;
+  
+  // Extract Core Web Vitals
+  const fcp = audits['first-contentful-paint'];
+  const lcp = audits['largest-contentful-paint'];
+  const fid = audits['first-input-delay'] || audits['max-potential-fid'];
+  const cls = audits['cumulative-layout-shift'];
+  const si = audits['speed-index'];
+  const tti = audits['interactive'];
+  
+  // Calculate overall score
+  const performanceScore = Math.round((categories.performance?.score || 0) * 100);
+  
+  return {
+    url,
+    test_date: new Date().toISOString(),
+    device_type: device,
+    overall_score: performanceScore,
+    grade: getGrade(performanceScore),
+    raw_metrics: {
+      fcp: fcp?.numericValue || 0,
+      lcp: lcp?.numericValue || 0,
+      fid: fid?.numericValue || 0,
+      cls: cls?.numericValue || 0,
+      si: si?.numericValue || 0,
+      tti: tti?.numericValue || 0
+    },
+    opportunities: extractOpportunities(audits),
+    diagnostics: extractDiagnostics(audits),
+    performance_score: performanceScore,
+    accessibility_score: Math.round((categories.accessibility?.score || 0) * 100),
+    best_practices_score: Math.round((categories['best-practices']?.score || 0) * 100),
+    seo_score: Math.round((categories.seo?.score || 0) * 100)
+  };
+}
+
+function extractOpportunities(audits: any) {
+  const opportunities = [];
+  const opportunityAudits = [
+    'unused-css-rules',
+    'unused-javascript',
+    'modern-image-formats',
+    'offscreen-images',
+    'render-blocking-resources',
+    'unminified-css',
+    'unminified-javascript',
+    'efficient-animated-content',
+    'duplicated-javascript',
+    'legacy-javascript'
+  ];
+  
+  for (const auditId of opportunityAudits) {
+    const audit = audits[auditId];
+    if (audit && audit.details && audit.details.overallSavingsMs > 0) {
+      opportunities.push({
+        id: auditId,
+        title: audit.title,
+        description: audit.description,
+        savings_ms: audit.details.overallSavingsMs,
+        savings_bytes: audit.details.overallSavingsBytes || 0
+      });
+    }
+  }
+  
+  return opportunities;
+}
+
+function extractDiagnostics(audits: any) {
+  const diagnostics = [];
+  const diagnosticAudits = [
+    'server-response-time',
+    'dom-size',
+    'critical-request-chains',
+    'uses-long-cache-ttl',
+    'total-byte-weight',
+    'uses-optimized-images',
+    'uses-text-compression',
+    'uses-responsive-images'
+  ];
+  
+  for (const auditId of diagnosticAudits) {
+    const audit = audits[auditId];
+    if (audit) {
+      diagnostics.push({
+        id: auditId,
+        title: audit.title,
+        description: audit.description,
+        score: audit.score,
+        displayValue: audit.displayValue
+      });
+    }
+  }
+  
+  return diagnostics;
+}
+
+function getGrade(score: number): string {
+  if (score >= 90) return 'A';
+  if (score >= 80) return 'B';
+  if (score >= 70) return 'C';
+  if (score >= 60) return 'D';
+  return 'F';
+}
+
+function getStatus(value: number, thresholds: { good: number; poor: number }): 'good' | 'needs-improvement' | 'poor' {
+  if (value <= thresholds.good) return 'good';
+  if (value <= thresholds.poor) return 'needs-improvement';
+  return 'poor';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { url, device_type = 'mobile', vendor = 'gemini' } = await request.json();
-    // Get vendor-specific API key
-    const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
     
-    if (!apiKey) {
+    // Get vendor-specific API key for AI refinement
+    const aiApiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
+    
+    if (!aiApiKey) {
       return NextResponse.json({ error: `${vendor.toUpperCase()} API key not configured` }, { status: 500 });
+    }
+
+    // We need Google API key for PageSpeed Insights
+    if (!GOOGLE_API_KEY) {
+      return NextResponse.json({ error: 'Google API key not configured for PageSpeed Insights' }, { status: 500 });
     }
 
     if (!url) {
@@ -99,221 +237,175 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Step 1: Get real performance data from Google PageSpeed Insights
+    const pageSpeedData = await getPageSpeedInsights(url, device_type, GOOGLE_API_KEY);
+    
+    if (!pageSpeedData) {
+      return NextResponse.json(
+        { error: 'Failed to analyze page speed. Please check if the URL is accessible.' },
+        { status: 500 }
+      );
+    }
+
+    // Step 2: Parse the PageSpeed data
+    const parsedData = parsePageSpeedData(pageSpeedData, url, device_type);
+
+    // Step 3: Use AI to refine analysis and provide enhanced recommendations
     const aiVendor = AIVendorFactory.createVendor(vendor);
 
-    const prompt = `Analyze the page speed and performance of the website: ${url} for ${device_type} device.
+    const prompt = `Based on the following real PageSpeed Insights data, provide enhanced analysis and recommendations in JSON format:
 
-Please provide a comprehensive page speed analysis in the following JSON format:
+REAL PAGESPEED DATA:
+- URL: ${url}
+- Device: ${device_type}
+- Performance Score: ${parsedData.performance_score}/100
+- Accessibility Score: ${parsedData.accessibility_score}/100
+- Best Practices Score: ${parsedData.best_practices_score}/100
+- SEO Score: ${parsedData.seo_score}/100
+
+CORE WEB VITALS:
+- First Contentful Paint: ${(parsedData.raw_metrics.fcp / 1000).toFixed(2)}s
+- Largest Contentful Paint: ${(parsedData.raw_metrics.lcp / 1000).toFixed(2)}s
+- First Input Delay: ${parsedData.raw_metrics.fid}ms
+- Cumulative Layout Shift: ${parsedData.raw_metrics.cls.toFixed(3)}
+- Speed Index: ${(parsedData.raw_metrics.si / 1000).toFixed(2)}s
+- Time to Interactive: ${(parsedData.raw_metrics.tti / 1000).toFixed(2)}s
+
+OPPORTUNITIES FOUND:
+${JSON.stringify(parsedData.opportunities, null, 2)}
+
+DIAGNOSTICS:
+${JSON.stringify(parsedData.diagnostics, null, 2)}
+
+Please provide enhanced analysis in this JSON format:
 
 {
   "url": "${url}",
-  "test_date": "2024-01-15 14:30:00",
+  "test_date": "${new Date().toISOString()}",
   "device_type": "${device_type}",
-  "overall_score": 75,
-  "grade": "B",
+  "overall_score": ${parsedData.performance_score},
+  "grade": "${parsedData.grade}",
   "metrics": {
     "first_contentful_paint": {
       "name": "First Contentful Paint",
-      "value": 1.8,
+      "value": ${(parsedData.raw_metrics.fcp / 1000).toFixed(2)},
       "unit": "s",
-      "score": 85,
-      "status": "good",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.fcp / 1000 - 1.8) * 50))},
+      "status": "${getStatus(parsedData.raw_metrics.fcp / 1000, { good: 1.8, poor: 3.0 })}",
       "description": "Time until the first text or image is painted",
-      "threshold": {
-        "good": 1.8,
-        "poor": 3.0
-      }
+      "threshold": { "good": 1.8, "poor": 3.0 }
     },
     "largest_contentful_paint": {
       "name": "Largest Contentful Paint",
-      "value": 2.5,
+      "value": ${(parsedData.raw_metrics.lcp / 1000).toFixed(2)},
       "unit": "s",
-      "score": 70,
-      "status": "needs-improvement",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.lcp / 1000 - 2.5) * 40))},
+      "status": "${getStatus(parsedData.raw_metrics.lcp / 1000, { good: 2.5, poor: 4.0 })}",
       "description": "Time until the largest text or image is painted",
-      "threshold": {
-        "good": 2.5,
-        "poor": 4.0
-      }
+      "threshold": { "good": 2.5, "poor": 4.0 }
     },
     "first_input_delay": {
       "name": "First Input Delay",
-      "value": 100,
+      "value": ${parsedData.raw_metrics.fid},
       "unit": "ms",
-      "score": 90,
-      "status": "good",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.fid - 100) * 0.5))},
+      "status": "${getStatus(parsedData.raw_metrics.fid, { good: 100, poor: 300 })}",
       "description": "Time from when a user first interacts with your page to when the browser responds",
-      "threshold": {
-        "good": 100,
-        "poor": 300
-      }
+      "threshold": { "good": 100, "poor": 300 }
     },
     "cumulative_layout_shift": {
       "name": "Cumulative Layout Shift",
-      "value": 0.1,
+      "value": ${parsedData.raw_metrics.cls.toFixed(3)},
       "unit": "",
-      "score": 80,
-      "status": "good",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.cls - 0.1) * 400))},
+      "status": "${getStatus(parsedData.raw_metrics.cls, { good: 0.1, poor: 0.25 })}",
       "description": "Measures visual stability by quantifying unexpected layout shifts",
-      "threshold": {
-        "good": 0.1,
-        "poor": 0.25
-      }
+      "threshold": { "good": 0.1, "poor": 0.25 }
     },
     "speed_index": {
       "name": "Speed Index",
-      "value": 3.2,
+      "value": ${(parsedData.raw_metrics.si / 1000).toFixed(2)},
       "unit": "s",
-      "score": 65,
-      "status": "needs-improvement",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.si / 1000 - 3.4) * 30))},
+      "status": "${getStatus(parsedData.raw_metrics.si / 1000, { good: 3.4, poor: 5.8 })}",
       "description": "How quickly the contents of a page are visibly populated",
-      "threshold": {
-        "good": 3.4,
-        "poor": 5.8
-      }
+      "threshold": { "good": 3.4, "poor": 5.8 }
     },
     "time_to_interactive": {
       "name": "Time to Interactive",
-      "value": 4.1,
+      "value": ${(parsedData.raw_metrics.tti / 1000).toFixed(2)},
       "unit": "s",
-      "score": 60,
-      "status": "needs-improvement",
+      "score": ${Math.round(100 - Math.min(100, (parsedData.raw_metrics.tti / 1000 - 3.8) * 25))},
+      "status": "${getStatus(parsedData.raw_metrics.tti / 1000, { good: 3.8, poor: 7.3 })}",
       "description": "Time until the page becomes fully interactive",
-      "threshold": {
-        "good": 3.8,
-        "poor": 7.3
-      }
+      "threshold": { "good": 3.8, "poor": 7.3 }
     }
   },
   "opportunities": [
-    {
-      "title": "Optimize images",
-      "description": "Properly size images to save cellular data and improve load time",
-      "impact": "high",
-      "savings": "2.1s",
-      "category": "Images",
-      "recommendations": [
-        "Serve images in next-gen formats like WebP",
-        "Properly size images for different screen sizes",
-        "Use lazy loading for off-screen images"
-      ]
-    },
-    {
-      "title": "Eliminate render-blocking resources",
-      "description": "Resources are blocking the first paint of your page",
-      "impact": "medium",
-      "savings": "1.2s",
-      "category": "CSS/JS",
-      "recommendations": [
-        "Inline critical CSS",
-        "Defer non-critical CSS",
-        "Remove unused CSS and JavaScript"
-      ]
-    }
+    // Enhanced opportunities based on real data with actionable recommendations
   ],
   "resource_breakdown": [
-    {
-      "type": "Images",
-      "count": 15,
-      "size": "1.2 MB",
-      "load_time": "2.1s",
-      "percentage": 45
-    },
-    {
-      "type": "JavaScript",
-      "count": 8,
-      "size": "650 KB",
-      "load_time": "1.5s",
-      "percentage": 25
-    },
-    {
-      "type": "CSS",
-      "count": 5,
-      "size": "320 KB",
-      "load_time": "0.8s",
-      "percentage": 15
-    },
-    {
-      "type": "Fonts",
-      "count": 3,
-      "size": "180 KB",
-      "load_time": "0.6s",
-      "percentage": 10
-    },
-    {
-      "type": "Other",
-      "count": 7,
-      "size": "120 KB",
-      "load_time": "0.4s",
-      "percentage": 5
-    }
+    // Estimated resource breakdown
   ],
   "technical_details": {
-    "total_page_size": "2.47 MB",
-    "total_requests": 38,
-    "dom_elements": 1250,
-    "server_response_time": "450ms",
+    "total_page_size": "Unknown",
+    "total_requests": 0,
+    "dom_elements": 0,
+    "server_response_time": "Unknown",
     "compression_enabled": true,
-    "image_optimization": 65,
-    "css_minification": false,
+    "image_optimization": 70,
+    "css_minification": true,
     "js_minification": true,
     "browser_caching": true,
     "cdn_usage": false
   },
   "recommendations": {
     "critical": [
-      "Optimize and compress images to reduce file sizes",
-      "Enable CSS minification to reduce file sizes",
-      "Implement a Content Delivery Network (CDN)"
+      // Based on real performance issues found
     ],
     "important": [
-      "Eliminate render-blocking CSS and JavaScript",
-      "Reduce server response time",
-      "Implement lazy loading for images"
+      // Based on opportunities for improvement
     ],
     "minor": [
-      "Reduce DOM complexity",
-      "Optimize web fonts loading",
-      "Enable text compression"
+      // Minor optimizations
     ]
   },
   "comparison": {
     "industry_average": 65,
     "top_performers": 90,
-    "your_score": 75
+    "your_score": ${parsedData.performance_score}
   }
 }
 
-Provide realistic performance metrics based on the device type (mobile typically has lower scores than desktop). Include specific, actionable recommendations for improvement. Make sure all scores are between 0-100 and reflect real-world performance characteristics.`;
+Focus on actionable recommendations based on the real performance data. Prioritize the most impactful optimizations.`;
 
     try {
       const response = await aiVendor.ask({
         prompt,
-        api_key: apiKey
+        api_key: aiApiKey
       });
 
-      // Try to parse the AI response
-      let speedResult: PageSpeedResult;
+      // Try to parse AI response
+      let analysisResult: PageSpeedResult;
       try {
-        // Extract JSON from the response
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          speedResult = JSON.parse(jsonMatch[0]);
+          analysisResult = JSON.parse(jsonMatch[0]);
         } else {
           throw new Error('No JSON found in response');
         }
       } catch (parseError) {
         console.error('Failed to parse AI response:', parseError);
-        // Fallback to generated data
-        speedResult = generateFallbackPageSpeedResult(url, device_type);
+        // Fallback to basic analysis based on real data
+        analysisResult = generateBasicPageSpeedAnalysis(parsedData, url, device_type);
       }
 
-      return NextResponse.json(speedResult);
+      return NextResponse.json(analysisResult);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
-      // Fallback to generated data
-      const fallbackResult = generateFallbackPageSpeedResult(url, device_type);
+      // Fallback to basic analysis
+      const fallbackResult = generateBasicPageSpeedAnalysis(parsedData, url, device_type);
       return NextResponse.json(fallbackResult);
     }
 
@@ -326,206 +418,143 @@ Provide realistic performance metrics based on the device type (mobile typically
   }
 }
 
-function generateFallbackPageSpeedResult(url: string, device_type: 'mobile' | 'desktop'): PageSpeedResult {
-  // Mobile typically has lower scores than desktop
-  const baseScore = device_type === 'mobile' ? 60 : 80;
-  const variance = 20;
-  
-  const getRandomScore = () => Math.max(10, Math.min(100, baseScore + (Math.random() - 0.5) * variance));
-  const getRandomValue = (min: number, max: number) => Math.round((Math.random() * (max - min) + min) * 10) / 10;
-  
-  const fcpScore = getRandomScore();
-  const lcpScore = getRandomScore();
-  const fidScore = getRandomScore();
-  const clsScore = getRandomScore();
-  const siScore = getRandomScore();
-  const ttiScore = getRandomScore();
-  
-  const overallScore = Math.round((fcpScore + lcpScore + fidScore + clsScore + siScore + ttiScore) / 6);
-  
-  const getGrade = (score: number) => {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
-    return 'F';
-  };
+function generateBasicPageSpeedAnalysis(parsedData: any, url: string, device_type: 'mobile' | 'desktop'): PageSpeedResult {
+  const fcpScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.fcp / 1000 - 1.8) * 50)));
+  const lcpScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.lcp / 1000 - 2.5) * 40)));
+  const fidScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.fid - 100) * 0.5)));
+  const clsScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.cls - 0.1) * 400)));
+  const siScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.si / 1000 - 3.4) * 30)));
+  const ttiScore = Math.round(100 - Math.min(100, Math.max(0, (parsedData.raw_metrics.tti / 1000 - 3.8) * 25)));
 
-  const getStatus = (score: number): 'good' | 'needs-improvement' | 'poor' => {
-    if (score >= 80) return 'good';
-    if (score >= 50) return 'needs-improvement';
-    return 'poor';
-  };
-
-  const getMetricValue = (metricType: string, score: number) => {
-    switch (metricType) {
-      case 'fcp':
-        return score >= 80 ? getRandomValue(0.5, 1.8) : score >= 50 ? getRandomValue(1.8, 3.0) : getRandomValue(3.0, 6.0);
-      case 'lcp':
-        return score >= 80 ? getRandomValue(1.0, 2.5) : score >= 50 ? getRandomValue(2.5, 4.0) : getRandomValue(4.0, 8.0);
-      case 'fid':
-        return score >= 80 ? getRandomValue(10, 100) : score >= 50 ? getRandomValue(100, 300) : getRandomValue(300, 600);
-      case 'cls':
-        return score >= 80 ? getRandomValue(0.01, 0.1) : score >= 50 ? getRandomValue(0.1, 0.25) : getRandomValue(0.25, 0.5);
-      case 'si':
-        return score >= 80 ? getRandomValue(1.5, 3.4) : score >= 50 ? getRandomValue(3.4, 5.8) : getRandomValue(5.8, 10.0);
-      case 'tti':
-        return score >= 80 ? getRandomValue(2.0, 3.8) : score >= 50 ? getRandomValue(3.8, 7.3) : getRandomValue(7.3, 15.0);
-      default:
-        return 0;
-    }
-  };
-
-  const resourceTypes = ['Images', 'JavaScript', 'CSS', 'Fonts', 'Other'];
-  const totalSize = device_type === 'mobile' ? getRandomValue(1.5, 3.0) : getRandomValue(2.0, 4.0);
-  
   return {
     url,
-    test_date: new Date().toLocaleString(),
+    test_date: new Date().toISOString(),
     device_type,
-    overall_score: overallScore,
-    grade: getGrade(overallScore),
+    overall_score: parsedData.performance_score,
+    grade: parsedData.grade,
     metrics: {
       first_contentful_paint: {
         name: 'First Contentful Paint',
-        value: getMetricValue('fcp', fcpScore),
+        value: parseFloat((parsedData.raw_metrics.fcp / 1000).toFixed(2)),
         unit: 's',
         score: fcpScore,
-        status: getStatus(fcpScore),
+        status: getStatus(parsedData.raw_metrics.fcp / 1000, { good: 1.8, poor: 3.0 }),
         description: 'Time until the first text or image is painted',
         threshold: { good: 1.8, poor: 3.0 }
       },
       largest_contentful_paint: {
         name: 'Largest Contentful Paint',
-        value: getMetricValue('lcp', lcpScore),
+        value: parseFloat((parsedData.raw_metrics.lcp / 1000).toFixed(2)),
         unit: 's',
         score: lcpScore,
-        status: getStatus(lcpScore),
+        status: getStatus(parsedData.raw_metrics.lcp / 1000, { good: 2.5, poor: 4.0 }),
         description: 'Time until the largest text or image is painted',
         threshold: { good: 2.5, poor: 4.0 }
       },
       first_input_delay: {
         name: 'First Input Delay',
-        value: getMetricValue('fid', fidScore),
+        value: parsedData.raw_metrics.fid,
         unit: 'ms',
         score: fidScore,
-        status: getStatus(fidScore),
+        status: getStatus(parsedData.raw_metrics.fid, { good: 100, poor: 300 }),
         description: 'Time from when a user first interacts with your page to when the browser responds',
         threshold: { good: 100, poor: 300 }
       },
       cumulative_layout_shift: {
         name: 'Cumulative Layout Shift',
-        value: getMetricValue('cls', clsScore),
+        value: parseFloat(parsedData.raw_metrics.cls.toFixed(3)),
         unit: '',
         score: clsScore,
-        status: getStatus(clsScore),
+        status: getStatus(parsedData.raw_metrics.cls, { good: 0.1, poor: 0.25 }),
         description: 'Measures visual stability by quantifying unexpected layout shifts',
         threshold: { good: 0.1, poor: 0.25 }
       },
       speed_index: {
         name: 'Speed Index',
-        value: getMetricValue('si', siScore),
+        value: parseFloat((parsedData.raw_metrics.si / 1000).toFixed(2)),
         unit: 's',
         score: siScore,
-        status: getStatus(siScore),
+        status: getStatus(parsedData.raw_metrics.si / 1000, { good: 3.4, poor: 5.8 }),
         description: 'How quickly the contents of a page are visibly populated',
         threshold: { good: 3.4, poor: 5.8 }
       },
       time_to_interactive: {
         name: 'Time to Interactive',
-        value: getMetricValue('tti', ttiScore),
+        value: parseFloat((parsedData.raw_metrics.tti / 1000).toFixed(2)),
         unit: 's',
         score: ttiScore,
-        status: getStatus(ttiScore),
+        status: getStatus(parsedData.raw_metrics.tti / 1000, { good: 3.8, poor: 7.3 }),
         description: 'Time until the page becomes fully interactive',
         threshold: { good: 3.8, poor: 7.3 }
       }
     },
-    opportunities: [
-      {
-        title: 'Optimize images',
-        description: 'Properly size images to save cellular data and improve load time',
-        impact: 'high',
-        savings: `${getRandomValue(1.0, 3.0)}s`,
-        category: 'Images',
-        recommendations: [
-          'Serve images in next-gen formats like WebP',
-          'Properly size images for different screen sizes',
-          'Use lazy loading for off-screen images'
-        ]
-      },
-      {
-        title: 'Eliminate render-blocking resources',
-        description: 'Resources are blocking the first paint of your page',
-        impact: 'medium',
-        savings: `${getRandomValue(0.5, 2.0)}s`,
-        category: 'CSS/JS',
-        recommendations: [
-          'Inline critical CSS',
-          'Defer non-critical CSS',
-          'Remove unused CSS and JavaScript'
-        ]
-      },
-      {
-        title: 'Reduce server response time',
-        description: 'Server response time is slower than recommended',
-        impact: 'medium',
-        savings: `${getRandomValue(0.3, 1.5)}s`,
-        category: 'Server',
-        recommendations: [
-          'Optimize server configuration',
-          'Use a faster hosting provider',
-          'Implement server-side caching'
-        ]
-      }
+    opportunities: parsedData.opportunities.map((opp: any) => ({
+      title: opp.title,
+      description: opp.description,
+      impact: opp.savings_ms > 1000 ? 'high' : opp.savings_ms > 500 ? 'medium' : 'low',
+      savings: `${(opp.savings_ms / 1000).toFixed(1)}s`,
+      category: getCategoryFromId(opp.id),
+      recommendations: getRecommendationsFromId(opp.id)
+    })),
+    resource_breakdown: [
+      { type: 'Images', count: 0, size: 'Unknown', load_time: 'Unknown', percentage: 40 },
+      { type: 'JavaScript', count: 0, size: 'Unknown', load_time: 'Unknown', percentage: 30 },
+      { type: 'CSS', count: 0, size: 'Unknown', load_time: 'Unknown', percentage: 15 },
+      { type: 'HTML', count: 0, size: 'Unknown', load_time: 'Unknown', percentage: 10 },
+      { type: 'Other', count: 0, size: 'Unknown', load_time: 'Unknown', percentage: 5 }
     ],
-    resource_breakdown: resourceTypes.map((type: string, index: number) => {
-      const percentages = [40, 25, 15, 10, 10];
-      const counts = [15, 8, 5, 3, 7];
-      const percentage = percentages[index];
-      const size = (totalSize * percentage / 100).toFixed(1);
-      
-      return {
-        type,
-        count: counts[index] + Math.floor(Math.random() * 5),
-        size: `${size} MB`,
-        load_time: `${getRandomValue(0.3, 2.5)}s`,
-        percentage
-      };
-    }),
     technical_details: {
-      total_page_size: `${totalSize.toFixed(2)} MB`,
-      total_requests: Math.floor(Math.random() * 30) + 20,
-      dom_elements: Math.floor(Math.random() * 1000) + 500,
-      server_response_time: `${Math.floor(Math.random() * 500) + 200}ms`,
-      compression_enabled: Math.random() > 0.3,
-      image_optimization: Math.floor(Math.random() * 40) + 50,
-      css_minification: Math.random() > 0.4,
-      js_minification: Math.random() > 0.3,
-      browser_caching: Math.random() > 0.2,
-      cdn_usage: Math.random() > 0.5
+      total_page_size: 'Unknown',
+      total_requests: 0,
+      dom_elements: 0,
+      server_response_time: 'Unknown',
+      compression_enabled: true,
+      image_optimization: 70,
+      css_minification: true,
+      js_minification: true,
+      browser_caching: true,
+      cdn_usage: false
     },
     recommendations: {
-      critical: [
-        'Optimize and compress images to reduce file sizes',
-        'Enable CSS and JavaScript minification',
-        'Implement a Content Delivery Network (CDN)'
-      ],
-      important: [
-        'Eliminate render-blocking CSS and JavaScript',
-        'Reduce server response time',
-        'Implement lazy loading for images'
-      ],
-      minor: [
-        'Reduce DOM complexity',
-        'Optimize web fonts loading',
-        'Enable text compression'
-      ]
+      critical: parsedData.opportunities
+        .filter((opp: any) => opp.savings_ms > 1000)
+        .map((opp: any) => opp.title)
+        .slice(0, 3),
+      important: parsedData.opportunities
+        .filter((opp: any) => opp.savings_ms > 500 && opp.savings_ms <= 1000)
+        .map((opp: any) => opp.title)
+        .slice(0, 3),
+      minor: parsedData.opportunities
+        .filter((opp: any) => opp.savings_ms <= 500)
+        .map((opp: any) => opp.title)
+        .slice(0, 3)
     },
     comparison: {
-      industry_average: device_type === 'mobile' ? 55 : 75,
-      top_performers: device_type === 'mobile' ? 85 : 95,
-      your_score: overallScore
+      industry_average: device_type === 'mobile' ? 65 : 75,
+      top_performers: device_type === 'mobile' ? 85 : 90,
+      your_score: parsedData.performance_score
     }
   };
+}
+
+function getCategoryFromId(id: string): string {
+  if (id.includes('image')) return 'Images';
+  if (id.includes('css')) return 'CSS';
+  if (id.includes('javascript')) return 'JavaScript';
+  if (id.includes('render-blocking')) return 'Rendering';
+  return 'Performance';
+}
+
+function getRecommendationsFromId(id: string): string[] {
+  const recommendations: { [key: string]: string[] } = {
+    'unused-css-rules': ['Remove unused CSS rules', 'Use CSS tree shaking', 'Split CSS by pages'],
+    'unused-javascript': ['Remove unused JavaScript', 'Use code splitting', 'Implement lazy loading'],
+    'modern-image-formats': ['Use WebP format', 'Use AVIF for better compression', 'Implement responsive images'],
+    'offscreen-images': ['Implement lazy loading', 'Use intersection observer', 'Defer off-screen images'],
+    'render-blocking-resources': ['Inline critical CSS', 'Defer non-critical JavaScript', 'Use async/defer attributes'],
+    'unminified-css': ['Minify CSS files', 'Use build tools for optimization', 'Remove comments and whitespace'],
+    'unminified-javascript': ['Minify JavaScript files', 'Use build tools for optimization', 'Remove console logs']
+  };
+  
+  return recommendations[id] || ['Optimize this resource', 'Follow best practices', 'Monitor performance impact'];
 }
