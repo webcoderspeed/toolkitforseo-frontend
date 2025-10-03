@@ -30,7 +30,12 @@ export default function RootLayout({
 				className={inter.className}
 				suppressHydrationWarning
 			>
-				<ClerkProvider>
+				<ClerkProvider
+					signInUrl="/sign-in"
+					signUpUrl="/sign-up"
+					afterSignInUrl="/dashboard"
+					afterSignUpUrl="/dashboard"
+				>
 					<Analytics />
 					<ThemeProvider
 						attribute='class'
