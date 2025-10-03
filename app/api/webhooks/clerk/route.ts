@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { headers } from 'next/headers';
 import type { WebhookEvent } from '@clerk/nextjs/server';
+import { db } from '@/lib/db';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -45,18 +46,68 @@ export async function POST(req: NextRequest) {
   const { id } = evt.data;
   const eventType = evt.type;
 
+  if (!id) {
+    return NextResponse.json({ error: 'No user ID provided' }, { status: 400 });
+  }
+
   if (eventType === 'user.created') {
-    const { email_addresses, first_name, last_name } = evt.data;
+    const { email_addresses, first_name, last_name, image_url } = evt.data;
     const email = email_addresses[0]?.email_address;
     const name = first_name || last_name ? `${first_name || ''} ${last_name || ''}`.trim() : 'there';
 
+    // Create user in database
     if (email) {
       try {
+        await db.user.create({
+          data: {
+            clerkId: id,
+            email: email,
+            firstName: first_name || '',
+            lastName: last_name || '',
+            imageUrl: image_url || '',
+          },
+        });
+        console.log(`User created in database: ${id}`);
+
+        // Send welcome email
         await sendWelcomeEmail(email, name);
         console.log(`Welcome email sent to ${email}`);
       } catch (error) {
-        console.error('Error sending welcome email:', error);
+        console.error('Error creating user or sending welcome email:', error);
       }
+    }
+  }
+
+  if (eventType === 'user.updated') {
+    const { email_addresses, first_name, last_name, image_url } = evt.data;
+    const email = email_addresses[0]?.email_address;
+
+    if (email) {
+      try {
+        await db.user.update({
+          where: { clerkId: id },
+          data: {
+            email: email,
+            firstName: first_name || '',
+            lastName: last_name || '',
+            imageUrl: image_url || '',
+          },
+        });
+        console.log(`User updated in database: ${id}`);
+      } catch (error) {
+        console.error('Error updating user in database:', error);
+      }
+    }
+  }
+
+  if (eventType === 'user.deleted') {
+    try {
+      await db.user.delete({
+        where: { clerkId: id },
+      });
+      console.log(`User deleted from database: ${id}`);
+    } catch (error) {
+      console.error('Error deleting user from database:', error);
     }
   }
 
