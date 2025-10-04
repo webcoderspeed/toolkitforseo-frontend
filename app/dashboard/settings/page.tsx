@@ -21,27 +21,52 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("subscription")
 
   const [subscriptionPlan, setSubscriptionPlan] = useState("free")
+  const [subscription, setSubscription] = useState<any>(null)
   const [apiKeys, setApiKeys] = useState({
     openai: "",
     gemini: "",
+    anthropic: "",
   })
   const [notifications, setNotifications] = useState({
     email: true,
-    push: true,
+    push: false,
+    marketing: false,
     weeklyReport: true,
     newFeatures: true,
   })
 
-  const [credits, setCredits] = useState(2450)
+  const [credits, setCredits] = useState(0)
   const [processingCredits, setProcessingCredits] = useState<number | null>(null)
   const [processingPlan, setProcessingPlan] = useState<string | null>(null)
 
   useEffect(() => {
-    // Simulate loading data
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
+    fetchUserSettings()
   }, [])
+
+  const fetchUserSettings = async () => {
+    try {
+      const response = await fetch('/api/user/settings')
+      if (response.ok) {
+        const data = await response.json()
+        const user = data.user
+        
+        setCredits(user.credits)
+        setSubscription(user.subscription)
+        setSubscriptionPlan(user.subscription ? 'pro' : 'free')
+        setNotifications({
+          email: user.preferences.emailNotifications,
+          push: false,
+          marketing: false,
+          weeklyReport: true,
+          newFeatures: true
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching user settings:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -66,18 +91,40 @@ export default function SettingsPage() {
     setNotifications((prev) => ({ ...prev, [key]: checked }))
   }
 
-  const handleSaveNotifications = () => {
+  const handleSaveNotifications = async () => {
     setIsSaving(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false)
-
-      toast({
-        title: "Notification preferences saved",
-        description: "Your notification settings have been updated.",
+    try {
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          preferences: {
+            emailNotifications: notifications.email,
+            defaultAiVendor: 'gemini'
+          }
+        })
       })
-    }, 1500)
+
+      if (response.ok) {
+        toast({
+          title: "Notification preferences saved",
+          description: "Your notification settings have been updated.",
+        })
+      } else {
+        throw new Error('Failed to save settings')
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save notification settings. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleSubscribe = (plan: string) => {

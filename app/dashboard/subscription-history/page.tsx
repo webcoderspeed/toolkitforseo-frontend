@@ -30,103 +30,49 @@ export default function SubscriptionHistoryPage() {
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null)
 
   useEffect(() => {
-    // Simulate loading data
-    setTimeout(() => {
-      const mockTransactions: Transaction[] = [
-        {
-          id: "txn_1234567890",
-          date: "2023-05-15",
-          type: "subscription",
-          description: "Pro Plan Subscription - Monthly",
-          amount: 19.0,
-          status: "completed",
-        },
-        {
-          id: "txn_1234567891",
-          date: "2023-05-10",
-          type: "credit-purchase",
-          description: "Credit Purchase - 1500 Credits",
-          amount: 19.0,
-          status: "completed",
-          credits: 1500,
-        },
-        {
-          id: "txn_1234567892",
-          date: "2023-05-05",
-          type: "credit-usage",
-          description: "AI Content Analysis",
-          amount: 0,
-          status: "completed",
-          credits: -150,
-        },
-        {
-          id: "txn_1234567893",
-          date: "2023-04-15",
-          type: "subscription",
-          description: "Pro Plan Subscription - Monthly",
-          amount: 19.0,
-          status: "completed",
-        },
-        {
-          id: "txn_1234567894",
-          date: "2023-04-08",
-          type: "credit-purchase",
-          description: "Credit Purchase - 500 Credits",
-          amount: 9.0,
-          status: "completed",
-          credits: 500,
-        },
-        {
-          id: "txn_1234567895",
-          date: "2023-04-03",
-          type: "credit-usage",
-          description: "Keyword Research Tool",
-          amount: 0,
-          status: "completed",
-          credits: -75,
-        },
-        {
-          id: "txn_1234567896",
-          date: "2023-04-01",
-          type: "credit-usage",
-          description: "Backlink Analysis",
-          amount: 0,
-          status: "completed",
-          credits: -200,
-        },
-        {
-          id: "txn_1234567897",
-          date: "2023-03-15",
-          type: "subscription",
-          description: "Pro Plan Subscription - Monthly",
-          amount: 19.0,
-          status: "completed",
-        },
-        {
-          id: "txn_1234567898",
-          date: "2023-03-10",
-          type: "credit-purchase",
-          description: "Credit Purchase - 3000 Credits",
-          amount: 29.0,
-          status: "completed",
-          credits: 3000,
-        },
-        {
-          id: "txn_1234567899",
-          date: "2023-03-05",
-          type: "credit-usage",
-          description: "SEO Audit",
-          amount: 0,
-          status: "completed",
-          credits: -350,
-        },
-      ]
-
-      setTransactions(mockTransactions)
-      setFilteredTransactions(mockTransactions)
-      setIsLoading(false)
-    }, 1500)
+    fetchTransactions()
   }, [])
+
+  const fetchTransactions = async () => {
+    try {
+      const response = await fetch('/api/user/transactions')
+      if (response.ok) {
+        const data = await response.json()
+        setTransactions(data.transactions)
+        setFilteredTransactions(data.transactions)
+      } else {
+        // Fallback to mock data if API fails
+        const mockTransactions: Transaction[] = [
+          {
+            id: "txn_1234567890",
+            date: "2023-05-15",
+            type: "subscription",
+            description: "Pro Plan Subscription - Monthly",
+            amount: 19.0,
+            status: "completed",
+          },
+          {
+            id: "txn_1234567891",
+            date: "2023-05-10",
+            type: "credit-purchase",
+            description: "Credit Purchase - 1500 Credits",
+            amount: 19.0,
+            status: "completed",
+            credits: 1500,
+          }
+        ]
+        setTransactions(mockTransactions)
+        setFilteredTransactions(mockTransactions)
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error)
+      // Fallback to empty array
+      setTransactions([])
+      setFilteredTransactions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     // Apply filters

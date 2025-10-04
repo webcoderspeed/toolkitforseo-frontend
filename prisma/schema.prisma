@@ -24,6 +24,8 @@ model User {
   imageUrl          String?
   username          String?  @unique
   isActive          Boolean  @default(true)
+  credits           Int      @default(0)
+  stripeCustomerId  String?  @unique
   lastLoginAt       DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -33,6 +35,7 @@ model User {
   projects          Project[]
   toolUsages        ToolUsage[]
   userPreferences   UserPreferences?
+  creditPurchases   CreditPurchase[]
 
   // TODO: Next Phase - Uncomment for advanced features
   // company           String?
@@ -124,18 +127,18 @@ model Subscription {
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
+  // Stripe Integration Fields
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?           @unique
+  stripePriceId         String?
+  canceledAt            DateTime?
+  trialStart            DateTime?
+  trialEnd              DateTime?
+
   // MVP Relationships
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan                  SubscriptionPlan  @relation(fields: [planId], references: [id])
   usageRecords          UsageRecord[]
-
-  // TODO: Next Phase - Advanced billing
-  // canceledAt            DateTime?
-  // trialStart            DateTime?
-  // trialEnd              DateTime?
-  // stripeCustomerId      String?
-  // stripeSubscriptionId  String?           @unique
-  // stripePriceId         String?
 
   @@map("subscriptions")
 }
@@ -154,11 +157,11 @@ model SubscriptionPlan {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  subscriptions     Subscription[]
+  // Stripe Integration Fields
+  stripePriceId     String?  @unique
+  stripeProductId   String?
 
-  // TODO: Next Phase - Stripe integration
-  // stripePriceId     String?  @unique
-  // stripeProductId   String?
+  subscriptions     Subscription[]
 
   @@map("subscription_plans")
 }
@@ -167,11 +170,38 @@ enum SubscriptionStatus {
   ACTIVE
   CANCELED
   TRIALING
-  // TODO: Next Phase - Advanced statuses
-  // INCOMPLETE
-  // INCOMPLETE_EXPIRED
-  // PAST_DUE
-  // UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAST_DUE
+  UNPAID
+}
+
+// ================================
+// CREDIT PURCHASES (STRIPE)
+// ================================
+
+model CreditPurchase {
+  id                String            @id @default(cuid())
+  userId            String
+  credits           Int
+  amount            Decimal           @db.Decimal(10, 2)
+  currency          String            @default("USD")
+  status            PaymentStatus     @default(PENDING)
+  stripePaymentIntentId String?       @unique
+  stripeSessionId   String?           @unique
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("credit_purchases")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
 }
 
 // TODO: Next Phase - Advanced Billing
