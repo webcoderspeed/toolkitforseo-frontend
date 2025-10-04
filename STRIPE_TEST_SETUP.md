@@ -65,7 +65,7 @@ STRIPE_CREDITS_LARGE_PRICE_ID=price_...
 
 ### 3. Configure Webhooks
 Set up a webhook endpoint in Stripe Dashboard:
-- **URL**: `http://localhost:3000/api/stripe/webhook` (use ngrok for local testing)
+- **URL**: `http://localhost:3000/api/stripe/webhooks` (use ngrok for local testing)
 - **Events to listen for**:
   - `payment_intent.succeeded`
   - `checkout.session.completed`
@@ -104,7 +104,7 @@ npx prisma db seed
 ### 3. Webhook Testing
 1. Use Stripe CLI for local webhook testing:
    ```bash
-   stripe listen --forward-to localhost:3000/api/stripe/webhook
+   stripe listen --forward-to localhost:3000/api/stripe/webhooks
    ```
 2. Trigger test events and verify database updates
 
@@ -134,7 +134,7 @@ Use these test cards for different scenarios:
 - `POST /api/stripe/create-checkout-session` - Create checkout sessions
 - `POST /api/stripe/manage-subscription` - Manage subscriptions
 - `POST /api/stripe/create-portal-session` - Customer portal access
-- `POST /api/stripe/webhook` - Handle Stripe webhooks
+- `POST /api/stripe/webhooks` - Handle Stripe webhooks
 
 ### User Management:
 - `GET /api/user/settings` - Get user settings and subscription info

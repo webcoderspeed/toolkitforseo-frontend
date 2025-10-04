@@ -10,6 +10,33 @@ const stripe = new Stripe(STRIPE_SECRET_KEY, {
 
 const endpointSecret = STRIPE_WEBHOOK_SECRET
 
+// Handle GET requests for webhook verification
+export async function GET() {
+  return NextResponse.json({ 
+    message: 'Stripe webhook endpoint is active',
+    timestamp: new Date().toISOString()
+  }, { 
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+    }
+  });
+}
+
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
@@ -17,7 +44,14 @@ export async function POST(request: NextRequest) {
     const signature = headersList.get('stripe-signature');
 
     if (!signature) {
-      return NextResponse.json({ error: 'No signature provided' }, { status: 400 });
+      return NextResponse.json({ error: 'No signature provided' }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      });
     }
 
     let event: Stripe.Event;
@@ -29,14 +63,22 @@ export async function POST(request: NextRequest) {
         endpointSecret
       );
     } catch (err) {
-      console.error('Webhook signature verification failed:', err);
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+      console.error('❌ Webhook signature verification failed:', err);
+      return NextResponse.json({ error: 'Invalid signature' }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      });
     }
 
-    console.log('Received webhook event:', event.type);
+    console.log('🔔 Received webhook event:', event.type, 'ID:', event.id);
 
     switch (event.type) {
       case 'checkout.session.completed':
+        console.log('💳 Processing checkout session completed');
         await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
         break;
 
@@ -52,13 +94,26 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ received: true }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+      }
+    });
 
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('❌ Webhook error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      }
     );
   }
 }
@@ -73,22 +128,29 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 }
 
 async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
+  console.log('💰 Processing credit purchase for session:', session.id);
   const { userId, credits } = session.metadata || {};
 
+  console.log('📋 Session metadata:', { userId, credits, sessionId: session.id });
+
   if (!userId || !credits) {
-    console.error('Missing metadata in checkout session:', session.id);
+    console.error('❌ Missing metadata in checkout session:', session.id);
     return;
   }
 
   try {
+    console.log('🔄 Updating credit purchase record...');
     // Update credit purchase record
-    await db.creditPurchase.updateMany({
+    const updatedPurchase = await db.creditPurchase.updateMany({
       where: { stripeSessionId: session.id },
       data: { status: 'COMPLETED' }
     });
 
+    console.log('📝 Updated purchase records:', updatedPurchase.count);
+
+    console.log('➕ Adding credits to user account...');
     // Add credits to user account
-    await db.user.update({
+    const updatedUser = await db.user.update({
       where: { id: userId },
       data: {
         credits: {
@@ -97,10 +159,10 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
       }
     });
 
-    console.log(`Added ${credits} credits to user ${userId}`);
+    console.log(`✅ Successfully added ${credits} credits to user ${userId}. New balance: ${updatedUser.credits}`);
 
   } catch (error) {
-    console.error('Error processing credit purchase:', error);
+    console.error('❌ Error processing credit purchase:', error);
   }
 }
 
