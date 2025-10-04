@@ -1,8 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { headers } from 'next/headers';
-import { stripe } from '@/lib/stripe';
-import { db } from '@/lib/db';
-import Stripe from 'stripe';
+import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
+import Stripe from 'stripe'
+import { db } from '@/lib/db'
+import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '@/constants'
+
+const stripe = new Stripe(STRIPE_SECRET_KEY, {
+  apiVersion: '2025-09-30.clover',
+})
+
+const endpointSecret = STRIPE_WEBHOOK_SECRET
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +26,7 @@ export async function POST(request: NextRequest) {
       event = stripe.webhooks.constructEvent(
         body,
         signature,
-        process.env.STRIPE_WEBHOOK_SECRET!
+        endpointSecret
       );
     } catch (err) {
       console.error('Webhook signature verification failed:', err);

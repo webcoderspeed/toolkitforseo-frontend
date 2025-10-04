@@ -1,15 +1,16 @@
-import Stripe from 'stripe';
-import { loadStripe } from '@stripe/stripe-js';
+import Stripe from 'stripe'
+import { loadStripe } from '@stripe/stripe-js'
+import { STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY } from '@/constants'
 
 // Server-side Stripe instance
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+export const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2025-09-30.clover',
   typescript: true,
-});
+})
 
-// Client-side Stripe instance
+// Client-side Stripe promise
 export const getStripe = () => {
-  return loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+  return loadStripe(STRIPE_PUBLISHABLE_KEY);
 };
 
 // Subscription Plans Configuration
