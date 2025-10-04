@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface BacklinkRequest {
   url: string;
@@ -78,6 +79,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    // Check user credits before processing
+    const creditCheck = await checkCredits('backlink-checker');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: creditCheck.message,
+          remainingCredits: creditCheck.remainingCredits 
+        },
+        { status: 402 } // Payment Required
+      );
     }
 
     
@@ -508,9 +521,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       };
 
+      // Record successful usage for fallback data
+    await recordUsage('backlink-checker');
       return NextResponse.json(fallbackData);
     }
 
+    // Record successful usage for AI-generated data
+    await recordUsage('backlink-checker');
     return NextResponse.json(parsedData);
 
   } catch (error) {
@@ -569,6 +586,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     };
 
+    // Record failed usage
+      try {
+        await recordUsage('backlink-checker', undefined, undefined, false);
+      } catch (recordError) {
+        console.error('Failed to record usage:', recordError);
+      }
     return NextResponse.json(fallbackData);
   }
 }

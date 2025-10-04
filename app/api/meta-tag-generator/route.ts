@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
 import * as cheerio from 'cheerio';
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface MetaTagRequest {
   // For URL analysis mode
@@ -335,6 +336,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const data = await request.json() as MetaTagRequest;
     const { vendor = 'gemini' } = data;
 
+    // Check user credits before processing
+    const creditCheck = await checkCredits('meta-tag-generator');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { error: creditCheck.message },
+        { status: 402 }
+      );
+    }
+
     // Get vendor-specific API key for AI enhancement
     const aiApiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
     
@@ -541,18 +551,27 @@ Make sure all HTML is properly formatted and ready to use. The complete_html sho
         result = generateBasicMetaTags(inputData, analysis);
       }
 
+      // Record successful usage for AI-generated meta tags
+      await recordUsage('meta-tag-generator');
       return NextResponse.json(result);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
       // Fallback to basic generation
       const fallbackResult = generateBasicMetaTags(inputData, analysis);
+      // Record successful usage for fallback meta tags
+      await recordUsage('meta-tag-generator');
       return NextResponse.json(fallbackResult);
     }
 
   } catch (error) {
     console.error('Error in Meta Tag Generator API:', error);
-    return NextResponse.json(
+    // Record failed usage
+      try {
+        await recordUsage('meta-tag-generator', undefined, undefined, false);
+      } catch (usageError) {
+        console.error('Failed to record usage:', usageError);
+      } return NextResponse.json(
       { error: 'Failed to generate meta tags' },
       { status: 500 }
     );

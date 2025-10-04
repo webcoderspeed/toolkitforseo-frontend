@@ -3,7 +3,8 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics } from '@vercel/analytics/react'
+import { ClerkProvider } from '@clerk/nextjs'
  
 const inter = Inter({ subsets: ["latin"] })
 
@@ -29,15 +30,22 @@ export default function RootLayout({
 				className={inter.className}
 				suppressHydrationWarning
 			>
-				<Analytics />
-				<ThemeProvider
-					attribute='class'
-					defaultTheme='light'
-					enableSystem
-					disableTransitionOnChange
+				<ClerkProvider
+					signInUrl="/sign-in"
+					signUpUrl="/sign-up"
+					afterSignInUrl="/dashboard"
+					afterSignUpUrl="/dashboard"
 				>
-					{children}
-				</ThemeProvider>
+					<Analytics />
+					<ThemeProvider
+						attribute='class'
+						defaultTheme='light'
+						enableSystem
+						disableTransitionOnChange
+					>
+						{children}
+					</ThemeProvider>
+				</ClerkProvider>
 			</body>
 		</html>
 	);

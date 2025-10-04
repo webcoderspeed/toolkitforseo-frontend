@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { UserButton, SignedIn, SignedOut } from '@clerk/nextjs'
 
 export default function ToolsLayout({
   children,
@@ -26,9 +27,30 @@ export default function ToolsLayout({
               <span className="text-xl font-bold text-slate-900">ToolkitForSEO</span>
             </Link>
           </div>
-          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-            100% Free
-          </Badge>
+          <div className="flex items-center gap-4">
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+              100% Free
+            </Badge>
+            <SignedIn>
+              <UserButton 
+                appearance={{
+                  elements: {
+                    avatarBox: "w-8 h-8"
+                  }
+                }}
+              />
+            </SignedIn>
+            <SignedOut>
+              <div className="flex gap-2">
+                <Button variant="ghost" asChild>
+                  <Link href="/sign-in">Sign In</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/sign-up">Sign Up</Link>
+                </Button>
+              </div>
+            </SignedOut>
+          </div>
         </div>
       </header>
 

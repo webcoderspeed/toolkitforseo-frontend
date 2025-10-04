@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { AIVendorFactory } from '@/vendor_apis';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from '@/constants';
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface SEOIssue {
   category: string;
@@ -431,6 +432,15 @@ export async function POST(request: NextRequest) {
   try {
     const { url, vendor = 'gemini' } = await request.json();
     
+    // Check user credits before processing
+    const creditCheck = await checkCredits('website-seo-score-checker');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { error: creditCheck.message },
+        { status: 402 }
+      );
+    }
+    
     // Get vendor-specific API key for AI analysis
     const aiApiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
     const googleApiKey = GOOGLE_API_KEY;
@@ -750,17 +760,27 @@ ANALYSIS GUIDELINES:
         analysisResult = generateBasicAnalysis(scrapedData, analysisData, url, lighthouseResults);
       }
 
+      // Record successful usage for AI-generated analysis
+      await recordUsage('website-seo-score-checker');
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
       // Fallback to basic analysis
       const fallbackResult = generateBasicAnalysis(scrapedData, analysisData, url, lighthouseResults);
+      // Record successful usage even for fallback
+      await recordUsage('website-seo-score-checker');
       return NextResponse.json(fallbackResult);
     }
 
   } catch (error) {
     console.error('Error in website SEO score checker:', error);
+    // Record failed usage
+    try {
+      await recordUsage('website-seo-score-checker', undefined, undefined, false);
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
+    }
     return NextResponse.json(
       { error: 'Failed to analyze website SEO' },
       { status: 500 }

@@ -1,0 +1,484 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// USER MANAGEMENT & AUTHENTICATION
+// ================================
+
+model User {
+  id                String   @id @default(cuid())
+  clerkId           String   @unique
+  email             String   @unique
+  firstName         String?
+  lastName          String?
+  imageUrl          String?
+  username          String?  @unique
+  company           String?
+  website           String?
+  bio               String?
+  location          String?
+  timezone          String?
+  isEmailVerified   Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relationships
+  subscription      Subscription?
+  projects          Project[]
+  toolUsages        ToolUsage[]
+  apiKeys           ApiKey[]
+  notifications     Notification[]
+  supportTickets    SupportTicket[]
+  billingHistory    BillingHistory[]
+  userPreferences   UserPreferences?
+  teamMemberships   TeamMember[]
+  ownedTeams        Team[]           @relation("TeamOwner")
+
+  @@map("users")
+}
+
+model UserPreferences {
+  id                    String  @id @default(cuid())
+  userId                String  @unique
+  theme                 String  @default("system") // light, dark, system
+  language              String  @default("en")
+  timezone              String  @default("UTC")
+  emailNotifications    Boolean @default(true)
+  marketingEmails       Boolean @default(false)
+  weeklyReports         Boolean @default(true)
+  realTimeAlerts        Boolean @default(true)
+  defaultAiVendor       String  @default("gemini") // gemini, openai
+  
+  user                  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_preferences")
+}
+
+// ================================
+// TEAM MANAGEMENT
+// ================================
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  owner       User         @relation("TeamOwner", fields: [ownerId], references: [id])
+  members     TeamMember[]
+  projects    Project[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      TeamRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  // Relationships
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ================================
+// SUBSCRIPTION & BILLING
+// ================================
+
+model Subscription {
+  id                    String            @id @default(cuid())
+  userId                String            @unique
+  planId                String
+  status                SubscriptionStatus
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean           @default(false)
+  canceledAt            DateTime?
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?           @unique
+  stripePriceId         String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // Relationships
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                  SubscriptionPlan  @relation(fields: [planId], references: [id])
+  usageRecords          UsageRecord[]
+
+  @@map("subscriptions")
+}
+
+model SubscriptionPlan {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  price             Decimal  @db.Decimal(10, 2)
+  currency          String   @default("USD")
+  interval          String   // month, year
+  intervalCount     Int      @default(1)
+  stripePriceId     String?  @unique
+  stripeProductId   String?
+  isActive          Boolean  @default(true)
+  features          Json     // JSON array of features
+  limits            Json     // JSON object with usage limits
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relationships
+  subscriptions     Subscription[]
+
+  @@map("subscription_plans")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAST_DUE
+  TRIALING
+  UNPAID
+}
+
+model BillingHistory {
+  id                String   @id @default(cuid())
+  userId            String
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("USD")
+  description       String
+  status            String   // paid, pending, failed, refunded
+  stripeInvoiceId   String?  @unique
+  stripeChargeId    String?
+  invoiceUrl        String?
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+
+  // Relationships
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@map("billing_history")
+}
+
+// ================================
+// USAGE TRACKING & ANALYTICS
+// ================================
+
+model UsageRecord {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  toolName       String
+  usageCount     Int      @default(1)
+  date           DateTime @default(now())
+  metadata       Json?    // Additional usage data
+
+  // Relationships
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@map("usage_records")
+}
+
+model ToolUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  toolName      String
+  toolCategory  String
+  inputData     Json?    // Store input parameters
+  outputData    Json?    // Store results
+  processingTime Int?    // Processing time in milliseconds
+  aiVendor      String?  // gemini, openai
+  tokensUsed    Int?     // AI tokens consumed
+  success       Boolean  @default(true)
+  errorMessage  String?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, toolName])
+  @@index([createdAt])
+  @@map("tool_usages")
+}
+
+// ================================
+// PROJECT MANAGEMENT
+// ================================
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  website     String?
+  userId      String?
+  teamId      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user        User?    @relation(fields: [userId], references: [id])
+  team        Team?    @relation(fields: [teamId], references: [id])
+  keywords    Keyword[]
+  backlinks   Backlink[]
+  sslChecks   SSLCheck[]
+  seoAudits   SEOAudit[]
+
+  @@map("projects")
+}
+
+// ================================
+// SEO DATA MODELS
+// ================================
+
+model Keyword {
+  id              String   @id @default(cuid())
+  projectId       String
+  keyword         String
+  searchVolume    Int?
+  difficulty      Int?     // 0-100
+  cpc             Decimal? @db.Decimal(10, 2)
+  competition     String?  // low, medium, high
+  trend           String?  // rising, stable, declining
+  position        Int?     // Current ranking position
+  url             String?  // URL ranking for this keyword
+  lastChecked     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relationships
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rankingHistory  KeywordRanking[]
+
+  @@unique([projectId, keyword])
+  @@map("keywords")
+}
+
+model KeywordRanking {
+  id          String   @id @default(cuid())
+  keywordId   String
+  position    Int
+  url         String?
+  searchEngine String  @default("google")
+  location    String   @default("global")
+  device      String   @default("desktop") // desktop, mobile
+  checkedAt   DateTime @default(now())
+
+  // Relationships
+  keyword     Keyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@map("keyword_rankings")
+}
+
+model Backlink {
+  id              String   @id @default(cuid())
+  projectId       String
+  sourceUrl       String
+  targetUrl       String
+  anchorText      String?
+  linkType        String   @default("dofollow") // dofollow, nofollow
+  domainAuthority Int?
+  pageAuthority   Int?
+  spamScore       Int?
+  firstSeen       DateTime @default(now())
+  lastSeen        DateTime @default(now())
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  // Relationships
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceUrl, targetUrl])
+  @@map("backlinks")
+}
+
+model SSLCheck {
+  id              String   @id @default(cuid())
+  projectId       String
+  domain          String
+  isValid         Boolean
+  issuer          String?
+  expiryDate      DateTime?
+  daysRemaining   Int?
+  certificateData Json?    // Full SSL certificate data
+  checkedAt       DateTime @default(now())
+
+  // Relationships
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ssl_checks")
+}
+
+model SEOAudit {
+  id                String   @id @default(cuid())
+  projectId         String
+  url               String
+  performanceScore  Int?     // 0-100
+  seoScore          Int?     // 0-100
+  accessibilityScore Int?    // 0-100
+  bestPracticesScore Int?    // 0-100
+  auditData         Json     // Full audit results
+  recommendations   Json?    // SEO recommendations
+  createdAt         DateTime @default(now())
+
+  // Relationships
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("seo_audits")
+}
+
+// ================================
+// API MANAGEMENT
+// ================================
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  keyHash     String   @unique // Hashed API key
+  lastUsed    DateTime?
+  isActive    Boolean  @default(true)
+  permissions Json?    // Array of allowed endpoints/tools
+  rateLimit   Int      @default(1000) // Requests per hour
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  // Relationships
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+// ================================
+// NOTIFICATIONS & SUPPORT
+// ================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("info") // info, warning, error, success
+  isRead    Boolean  @default(false)
+  actionUrl String?
+  createdAt DateTime @default(now())
+
+  // Relationships
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid())
+  userId      String
+  subject     String
+  description String
+  status      TicketStatus  @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  category    String?
+  assignedTo  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  closedAt    DateTime?
+
+  // Relationships
+  user        User          @relation(fields: [userId], references: [id])
+  messages    TicketMessage[]
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  message   String
+  isFromUser Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  // Relationships
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_messages")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ================================
+// SYSTEM CONFIGURATION
+// ================================
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String?
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+// ================================
+// AUDIT LOGS
+// ================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

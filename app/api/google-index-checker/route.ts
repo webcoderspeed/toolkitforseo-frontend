@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from '@/constants';
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface GoogleIndexRequest {
   url: string;
@@ -231,6 +232,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const { url, vendor = 'gemini' } = await request.json() as GoogleIndexRequest;
 
+    // Check user credits before processing
+    const creditCheck = await checkCredits('google-index-checker');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { error: creditCheck.message },
+        { status: 402 }
+      );
+    }
+
     if (!url) {
       return NextResponse.json(
         { error: 'URL is required' },
@@ -412,18 +422,27 @@ Focus on actionable recommendations based on the real indexing data. If robots.t
         analysisResult = generateBasicIndexAnalysis(realData);
       }
 
+      // Record successful usage for AI-generated analysis
+      await recordUsage('google-index-checker');
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
       // Fallback to basic analysis
       const fallbackResult = generateBasicIndexAnalysis(realData);
+      // Record successful usage even for fallback
+      await recordUsage('google-index-checker');
       return NextResponse.json(fallbackResult);
     }
 
   } catch (error) {
     console.error('Error in Google Index Checker API:', error);
-    return NextResponse.json(
+    // Record failed usage
+      try {
+        await recordUsage('google-index-checker', undefined, undefined, false);
+      } catch (usageError) {
+        console.error('Failed to record usage:', usageError);
+      } return NextResponse.json(
       { error: 'Failed to check index status' },
       { status: 500 }
     );
