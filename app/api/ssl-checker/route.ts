@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 import * as tls from 'tls';
 import * as crypto from 'crypto';
 
@@ -372,6 +373,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // Check user credits before processing
+    const creditCheck = await checkCredits('ssl-checker');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: creditCheck.message,
+          remainingCredits: creditCheck.remainingCredits 
+        },
+        { status: 402 } // Payment Required
+      );
+    }
+
     // Clean the domain to remove protocol and paths
     const domain = cleanDomain(rawDomain);
 
@@ -444,6 +457,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
       };
 
+      // Record successful usage for non-SSL sites
+      await recordUsage('ssl-checker', 'security', 1, true);
       return NextResponse.json(basicResult);
     }
 
@@ -577,18 +592,27 @@ Focus on actionable recommendations based on the real SSL data. If the certifica
         analysisResult = generateBasicSSLAnalysis(realSSLData);
       }
 
+      // Record successful usage
+      await recordUsage('ssl-checker');
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
       // Fallback to basic analysis
       const fallbackResult = generateBasicSSLAnalysis(realSSLData);
+      // Record successful usage even for fallback
+      await recordUsage('ssl-checker', 'security', 1, true);
       return NextResponse.json(fallbackResult);
     }
 
   } catch (error) {
     console.error('Error in SSL Checker API:', error);
-    return NextResponse.json(
+    // Record failed usage
+      try {
+        await recordUsage('ssl-checker', undefined, undefined, false);
+      } catch (usageError) {
+        console.error('Failed to record usage:', usageError);
+      } return NextResponse.json(
       { error: 'Failed to check SSL certificate' },
       { status: 500 }
     );

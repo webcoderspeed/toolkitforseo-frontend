@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface KeywordResearchRequest {
   keyword: string;
@@ -38,6 +39,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!keyword) {
       return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
+    }
+
+    // Check user credits before processing
+    const creditCheck = await checkCredits('keyword-research');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: creditCheck.message,
+          remainingCredits: creditCheck.remainingCredits 
+        },
+        { status: 402 } // Payment Required
+      );
     }
 
     
@@ -248,9 +261,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ]
       };
 
+      // Record successful usage for fallback data
+    await recordUsage('keyword-research');
       return NextResponse.json(fallbackData);
     }
 
+    // Record successful usage for AI-generated data
+    await recordUsage('keyword-research', 'seo', 1, true);
     return NextResponse.json(parsedData);
 
   } catch (error) {
@@ -301,6 +318,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ]
     };
 
+    // Record failed usage
+      try {
+        await recordUsage('keyword-research', undefined, undefined, false);
+      } catch (usageError) {
+        console.error('Failed to record usage:', usageError);
+      }
     return NextResponse.json(fallbackData);
   }
 }

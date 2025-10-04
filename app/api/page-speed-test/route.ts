@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
 
 interface PerformanceMetric {
   name: string;
@@ -208,6 +209,18 @@ export async function POST(request: NextRequest) {
   try {
     const { url, device_type = 'mobile', vendor = 'gemini' } = await request.json();
     
+    // Check user credits before processing
+    const creditCheck = await checkCredits('page-speed-test');
+    if (!creditCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: creditCheck.message,
+          remainingCredits: creditCheck.remainingCredits 
+        },
+        { status: 402 } // Payment Required
+      );
+    }
+    
     // Get vendor-specific API key for AI refinement
     const aiApiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
     
@@ -400,18 +413,27 @@ Focus on actionable recommendations based on the real performance data. Prioriti
         analysisResult = generateBasicPageSpeedAnalysis(parsedData, url, device_type);
       }
 
+      // Record successful usage
+      await recordUsage('page-speed-test');
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
       console.error('AI vendor error:', aiError);
       // Fallback to basic analysis
       const fallbackResult = generateBasicPageSpeedAnalysis(parsedData, url, device_type);
+      // Record successful usage even for fallback
+      await recordUsage('page-speed-test');
       return NextResponse.json(fallbackResult);
     }
 
   } catch (error) {
     console.error('Error in page speed test:', error);
-    return NextResponse.json(
+    // Record failed usage
+      try {
+        await recordUsage('page-speed-test', undefined, undefined, false);
+      } catch (usageError) {
+        console.error('Failed to record usage:', usageError);
+      } return NextResponse.json(
       { error: 'Failed to analyze page speed' },
       { status: 500 }
     );
