@@ -93,8 +93,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    
-
     // Extract domain from URL
     const domain = new URL(url).hostname.replace('www.', '');
 
