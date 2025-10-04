@@ -8,15 +8,6 @@ export interface CreditCheckResult {
   message: string;
 }
 
-export interface ToolLimits {
-  monthlyCredits: number;
-  keywordResearch: number;
-  backlinkChecker: number;
-  sslChecker: number;
-  pageSpeedTest: number;
-  seoAnalysis: number;
-  aiTools: number;
-}
 
 /**
  * Check if user has enough credits for a tool
@@ -38,64 +29,30 @@ export async function checkCredits(
       };
     }
 
-    // Get user's subscription
+    // Get user's current credit balance
     const user = await db.user.findUnique({
       where: { clerkId: userId },
-      include: {
-        subscription: {
-          include: {
-            plan: true
-          }
-        }
+      select: {
+        id: true,
+        credits: true
       }
     });
 
-    if (!user || !user.subscription) {
+    if (!user) {
       return {
         allowed: false,
         remainingCredits: 0,
-        message: 'No active subscription found'
+        message: 'User not found'
       };
     }
 
-    const limits = user.subscription.plan.limits as unknown as ToolLimits;
-    const toolLimit = getToolLimit(toolName, limits);
-
-    // -1 means unlimited
-    if (toolLimit === -1) {
-      return {
-        allowed: true,
-        remainingCredits: -1,
-        message: 'Unlimited usage'
-      };
-    }
-
-    // Get current month usage
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const currentUsage = await db.toolUsage.aggregate({
-      where: {
-        userId: user.id,
-        toolName,
-        createdAt: {
-          gte: startOfMonth
-        }
-      },
-      _sum: {
-        creditsUsed: true
-      }
-    });
-
-    const usedCredits = currentUsage._sum.creditsUsed || 0;
-    const remainingCredits = toolLimit - usedCredits;
+    const remainingCredits = user.credits;
 
     if (remainingCredits < actualCreditsRequired) {
       return {
         allowed: false,
         remainingCredits,
-        message: `Insufficient credits. You have ${remainingCredits} credits remaining for ${toolName}`
+        message: `Insufficient credits. You have ${remainingCredits} credits remaining, but need ${actualCreditsRequired} for ${toolName}`
       };
     }
 
@@ -136,34 +93,44 @@ export async function recordUsage(
 
     const user = await db.user.findUnique({
       where: { clerkId: userId },
-      include: { subscription: true }
+      select: {
+        id: true,
+        credits: true
+      }
     });
 
     if (!user) {
       throw new Error('User not found');
     }
 
-    // Record tool usage
-    await db.toolUsage.create({
-      data: {
-        userId: user.id,
-        toolName,
-        toolCategory: actualCategory,
-        creditsUsed: actualCreditsUsed,
-        success
-      }
-    });
+    // Check if user has enough credits
+    if (user.credits < actualCreditsUsed) {
+      throw new Error('Insufficient credits');
+    }
 
-    // Record usage in subscription
-    if (user.subscription) {
-      await db.usageRecord.create({
+    // Use transaction to ensure atomicity
+    await db.$transaction(async (tx) => {
+      // Deduct credits from user balance
+      await tx.user.update({
+        where: { id: user.id },
         data: {
-          subscriptionId: user.subscription.id,
-          toolName,
-          usageCount: actualCreditsUsed
+          credits: {
+            decrement: actualCreditsUsed
+          }
         }
       });
-    }
+
+      // Record tool usage
+      await tx.toolUsage.create({
+        data: {
+          userId: user.id,
+          toolName,
+          toolCategory: actualCategory,
+          creditsUsed: actualCreditsUsed,
+          success
+        }
+      });
+    });
 
   } catch (error) {
     console.error('Usage recording error:', error);
@@ -171,25 +138,7 @@ export async function recordUsage(
   }
 }
 
-/**
- * Get tool-specific limit from subscription limits
- */
-function getToolLimit(toolName: string, limits: ToolLimits): number {
-  const toolLimitMap: Record<string, keyof ToolLimits> = {
-    'keyword-research': 'keywordResearch',
-    'backlink-checker': 'backlinkChecker',
-    'ssl-checker': 'sslChecker',
-    'page-speed-test': 'pageSpeedTest',
-    'seo-analysis': 'seoAnalysis',
-    'ai-content-detector': 'aiTools',
-    'paraphrasing-tool': 'aiTools',
-    'grammar-checker': 'aiTools',
-    'text-summarizer': 'aiTools'
-  };
 
-  const limitKey = toolLimitMap[toolName];
-  return limitKey ? limits[limitKey] : limits.monthlyCredits;
-}
 
 /**
  * Get user's current usage stats
@@ -198,14 +147,13 @@ export async function getUserUsageStats(userId: string) {
   try {
     const user = await db.user.findUnique({
       where: { clerkId: userId },
-      include: {
-        subscription: {
-          include: { plan: true }
-        }
+      select: {
+        id: true,
+        credits: true
       }
     });
 
-    if (!user || !user.subscription) {
+    if (!user) {
       return null;
     }
 
@@ -226,11 +174,13 @@ export async function getUserUsageStats(userId: string) {
       }
     });
 
-    const limits = user.subscription.plan.limits as unknown as ToolLimits;
+    const totalUsedThisMonth = monthlyUsage.reduce((total, item) => {
+      return total + (item._sum.creditsUsed || 0);
+    }, 0);
     
     return {
-      plan: user.subscription.plan.name,
-      limits,
+      currentCredits: user.credits,
+      monthlyUsage: totalUsedThisMonth,
       usage: monthlyUsage.reduce((acc, item) => {
         acc[item.toolName] = item._sum.creditsUsed || 0;
         return acc;
@@ -238,7 +188,7 @@ export async function getUserUsageStats(userId: string) {
     };
 
   } catch (error) {
-    console.error('Usage stats error:', error);
+    console.error('Error getting usage stats:', error);
     return null;
   }
 }

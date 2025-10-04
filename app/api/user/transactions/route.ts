@@ -32,27 +32,8 @@ export async function GET(request: NextRequest) {
       take: 50
     })
 
-    // Get subscription
-    const subscription = await db.subscription.findUnique({
-      where: { userId: user.id },
-      include: { plan: true }
-    })
-
     // Format transactions
     const transactions: any[] = []
-
-    // Add subscription transactions
-    if (subscription) {
-      transactions.push({
-        id: `sub_${subscription.id}`,
-        date: subscription.createdAt.toISOString().split('T')[0],
-        type: 'subscription',
-        description: `${subscription.plan.name} Plan Subscription`,
-        amount: Number(subscription.plan.price),
-        status: subscription.status.toLowerCase(),
-        credits: 0
-      })
-    }
 
     // Add credit purchases
     creditPurchases.forEach((purchase: any) => {

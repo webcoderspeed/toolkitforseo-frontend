@@ -3,7 +3,6 @@ import { headers } from 'next/headers'
 import Stripe from 'stripe'
 import { db } from '@/lib/db'
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '@/constants'
-
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2025-09-30.clover',
 })
@@ -38,92 +37,113 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  let event: Stripe.Event;
+
   try {
+    // Get the raw body and signature
     const body = await request.text();
     const headersList = await headers();
     const signature = headersList.get('stripe-signature');
 
-    if (!signature) {
-      return NextResponse.json({ error: 'No signature provided' }, { 
-        status: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      });
-    }
+    // Development mode bypass for signature validation
+    if (process.env.NODE_ENV === 'development' && !endpointSecret) {
+      console.log('🔧 Development mode: Bypassing signature validation');
+      try {
+        event = JSON.parse(body);
+      } catch (err) {
+        console.error('❌ Invalid JSON payload:', err);
+        return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+      }
+    } else {
+      // Production signature validation
+      if (!signature) {
+        console.error('❌ No signature provided');
+        return NextResponse.json({ error: 'No signature provided' }, { status: 400 });
+      }
 
-    let event: Stripe.Event;
+      if (!endpointSecret) {
+        console.error('❌ Webhook endpoint secret not configured');
+        return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+      }
 
-    try {
-      event = stripe.webhooks.constructEvent(
-        body,
-        signature,
-        endpointSecret
-      );
-    } catch (err) {
-      console.error('❌ Webhook signature verification failed:', err);
-      return NextResponse.json({ error: 'Invalid signature' }, { 
-        status: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      });
+      try {
+        event = stripe.webhooks.constructEvent(body, signature, endpointSecret);
+      } catch (err) {
+        console.error('❌ Webhook signature verification failed:', err);
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+      }
     }
 
     console.log('🔔 Received webhook event:', event.type, 'ID:', event.id);
 
-    switch (event.type) {
-      case 'checkout.session.completed':
-        console.log('💳 Processing checkout session completed');
-        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
-        break;
-
-      case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
-        break;
-
-      case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-        break;
-
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+    // Handle the event based on type
+    try {
+      await handleWebhookEvent(event);
+    } catch (error) {
+      console.error('❌ Error handling webhook event:', error);
+      // Return 200 to acknowledge receipt but log the error
+      // This prevents Stripe from retrying the webhook
+      return NextResponse.json({ 
+        received: true, 
+        error: 'Event processing failed but acknowledged' 
+      }, { status: 200 });
     }
 
-    return NextResponse.json({ received: true }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-      }
-    });
+    // Return a 200 response to acknowledge receipt of the event
+    return NextResponse.json({ received: true }, { status: 200 });
 
   } catch (error) {
     console.error('❌ Webhook error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      }
+      { status: 500 }
     );
+  }
+}
+
+async function handleWebhookEvent(event: Stripe.Event) {
+  switch (event.type) {
+    case 'checkout.session.completed':
+      console.log('💳 Processing checkout session completed');
+      await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+      break;
+
+    case 'customer.created':
+      console.log('👤 Processing customer created');
+      await handleCustomerCreated(event.data.object as Stripe.Customer);
+      break;
+
+    case 'payment_intent.succeeded':
+      console.log('✅ Processing payment intent succeeded');
+      await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+      break;
+
+    case 'payment_intent.payment_failed':
+      console.log('❌ Processing payment intent failed');
+      await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+      break;
+
+    default:
+      console.log(`ℹ️ Unhandled event type: ${event.type}`);
+      // Don't throw an error for unhandled events
+      break;
   }
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
   console.log('Processing checkout session completed:', session.id);
 
-  if (session.mode === 'payment') {
-    // Handle one-time credit purchase
-    await handleCreditPurchaseCompleted(session);
+  try {
+    if (session.mode === 'payment') {
+      // Handle one-time credit purchase
+      await handleCreditPurchaseCompleted(session);
+    } else if (session.mode === 'subscription') {
+      // Handle subscription creation
+      console.log('🔄 Subscription checkout completed, will be handled by subscription.created event');
+    }
+  } catch (error) {
+    console.error('❌ Error in handleCheckoutSessionCompleted:', error);
+    throw error;
   }
 }
 
@@ -135,7 +155,7 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
 
   if (!userId || !credits) {
     console.error('❌ Missing metadata in checkout session:', session.id);
-    return;
+    throw new Error(`Missing required metadata: userId=${userId}, credits=${credits}`);
   }
 
   try {
@@ -163,58 +183,71 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
 
   } catch (error) {
     console.error('❌ Error processing credit purchase:', error);
+    throw error;
   }
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  console.log('Processing subscription updated:', subscription.id);
+
+
+async function handleCustomerCreated(customer: Stripe.Customer) {
+  console.log('Processing customer created:', customer.id);
   
   try {
-    const customer = await stripe.customers.retrieve(subscription.customer as string);
-    if ('deleted' in customer) return;
-
     const userId = customer.metadata?.userId;
     if (!userId) {
-      console.error('No userId found in customer metadata');
+      console.log('No userId in customer metadata, skipping database update');
       return;
     }
 
-    // Update subscription status
-    await db.subscription.updateMany({
-      where: { userId },
-      data: {
-        status: subscription.status === 'active' ? 'ACTIVE' : 
-                subscription.status === 'canceled' ? 'CANCELED' : 'ACTIVE',
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        updatedAt: new Date(),
-      }
+    // Update user record with Stripe customer ID
+    await db.user.update({
+      where: { id: userId },
+      data: { stripeCustomerId: customer.id }
     });
 
-    console.log(`Updated subscription for user ${userId}`);
+    console.log(`✅ Updated user ${userId} with Stripe customer ID ${customer.id}`);
 
   } catch (error) {
-    console.error('Error updating subscription:', error);
+    console.error('❌ Error processing customer created:', error);
+    throw error;
   }
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  console.log('Processing subscription deleted:', subscription.id);
-
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  console.log('Processing payment intent succeeded:', paymentIntent.id);
+  
   try {
-    const customer = await stripe.customers.retrieve(subscription.customer as string);
-    if ('deleted' in customer) return;
+    // Handle successful one-time payments that aren't part of checkout sessions
+    if (paymentIntent.metadata?.userId && paymentIntent.metadata?.credits) {
+      const { userId, credits } = paymentIntent.metadata;
+      
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          credits: {
+            increment: parseInt(credits)
+          }
+        }
+      });
 
-    const userId = customer.metadata?.userId;
-    if (!userId) return;
-
-    await db.subscription.updateMany({
-      where: { userId },
-      data: {
-        status: 'CANCELED',
-        updatedAt: new Date(),
-      }
-    });
+      console.log(`✅ Added ${credits} credits to user ${userId} from payment intent`);
+    }
   } catch (error) {
-    console.error('Error processing subscription deletion:', error);
+    console.error('❌ Error processing payment intent succeeded:', error);
+    throw error;
+  }
+}
+
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+  console.log('Processing payment intent failed:', paymentIntent.id);
+  
+  try {
+    // Log failed payment for monitoring
+    console.log(`⚠️ Payment failed: ${paymentIntent.id}, reason: ${paymentIntent.last_payment_error?.message || 'Unknown'}`);
+    
+    // You might want to notify the user or update records
+  } catch (error) {
+    console.error('❌ Error processing payment intent failed:', error);
+    throw error;
   }
 }

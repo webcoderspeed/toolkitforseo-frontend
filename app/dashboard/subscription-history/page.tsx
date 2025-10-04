@@ -9,11 +9,12 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import Link from "next/link"
 
 interface Transaction {
   id: string
   date: string
-  type: "subscription" | "credit-purchase" | "credit-usage"
+  type: "credit-purchase" | "credit-usage"
   description: string
   amount: number
   status: "completed" | "pending" | "failed"
@@ -28,47 +29,57 @@ export default function SubscriptionHistoryPage() {
   const [filter, setFilter] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null)
+  const [creditStats, setCreditStats] = useState<{
+    currentCredits: number
+    monthlyUsage: number
+  } | null>(null)
 
   useEffect(() => {
     fetchTransactions()
+    fetchCreditStats()
   }, [])
+
+  const fetchCreditStats = async () => {
+    try {
+      const response = await fetch('/api/user/credits')
+      if (response.ok) {
+        const data = await response.json()
+        setCreditStats({
+          currentCredits: data.currentCredits,
+          monthlyUsage: data.monthlyUsage
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching credit stats:', error)
+    }
+  }
 
   const fetchTransactions = async () => {
     try {
       const response = await fetch('/api/user/transactions')
       if (response.ok) {
         const data = await response.json()
-        setTransactions(data.transactions)
-        setFilteredTransactions(data.transactions)
+        setTransactions(data.transactions || [])
+        setFilteredTransactions(data.transactions || [])
       } else {
-        // Fallback to mock data if API fails
-        const mockTransactions: Transaction[] = [
-          {
-            id: "txn_1234567890",
-            date: "2023-05-15",
-            type: "subscription",
-            description: "Pro Plan Subscription - Monthly",
-            amount: 19.0,
-            status: "completed",
-          },
-          {
-            id: "txn_1234567891",
-            date: "2023-05-10",
-            type: "credit-purchase",
-            description: "Credit Purchase - 1500 Credits",
-            amount: 19.0,
-            status: "completed",
-            credits: 1500,
-          }
-        ]
-        setTransactions(mockTransactions)
-        setFilteredTransactions(mockTransactions)
+        console.error('Failed to fetch transactions:', response.status, response.statusText)
+        setTransactions([])
+        setFilteredTransactions([])
+        toast({
+          title: "Error",
+          description: "Failed to load transaction history. Please try again later.",
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error fetching transactions:', error)
-      // Fallback to empty array
       setTransactions([])
       setFilteredTransactions([])
+      toast({
+        title: "Error",
+        description: "Failed to load transaction history. Please check your connection.",
+        variant: "destructive"
+      })
     } finally {
       setIsLoading(false)
     }
@@ -102,7 +113,7 @@ export default function SubscriptionHistoryPage() {
     // Simulate download delay
     setTimeout(() => {
       // Create a CSV content for the invoice
-      const csvContent = `Transaction ID,Date,Description,Amount\n${transactionId},2023-05-15,"Pro Plan Subscription - Monthly",19.00`
+      const csvContent = `Transaction ID,Date,Description,Amount\n${transactionId},2023-05-15,"Credit Purchase - 1000 Credits",19.00`
 
       // Create a Blob with the CSV content
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
@@ -135,6 +146,30 @@ export default function SubscriptionHistoryPage() {
     }, 1000)
   }
 
+  const downloadCSV = () => {
+    const csvContent = [
+      ["Date", "Type", "Description", "Amount", "Status", "Credits"],
+      ...filteredTransactions.map(transaction => [
+        transaction.date,
+        transaction.type === "credit-purchase" ? "Credit Purchase" : "Credit Usage",
+        transaction.description,
+        transaction.amount > 0 ? `$${transaction.amount.toFixed(2)}` : "$0.00",
+        transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1),
+        transaction.credits?.toString() || "0"
+      ])
+    ]
+      .map(row => row.join(","))
+      .join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv" })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "transaction-history.csv"
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
   const formatDate = (dateString: string) => {
     const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
     return new Date(dateString).toLocaleDateString(undefined, options)
@@ -149,15 +184,10 @@ export default function SubscriptionHistoryPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="max-w-4xl mx-auto"
-    >
+    <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Subscription & Billing History</h1>
-        <p className="text-slate-600">View your subscription and credit transaction history</p>
+        <h1 className="text-2xl font-bold text-slate-900">Credit & Transaction History</h1>
+        <p className="text-slate-600">View your credit purchases and usage history</p>
       </div>
 
       <Card className="mb-6">
@@ -174,7 +204,6 @@ export default function SubscriptionHistoryPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Transactions</SelectItem>
-                  <SelectItem value="subscription">Subscriptions</SelectItem>
                   <SelectItem value="credit-purchase">Credit Purchases</SelectItem>
                   <SelectItem value="credit-usage">Credit Usage</SelectItem>
                 </SelectContent>
@@ -185,6 +214,15 @@ export default function SubscriptionHistoryPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full sm:w-[220px]"
               />
+              <Button 
+                variant="outline" 
+                onClick={downloadCSV}
+                className="w-full sm:w-auto"
+                disabled={filteredTransactions.length === 0}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -213,26 +251,18 @@ export default function SubscriptionHistoryPage() {
                           <Badge
                             variant="outline"
                             className={
-                              transaction.type === "subscription"
-                                ? "bg-purple-50 text-purple-700 border-purple-200"
-                                : transaction.type === "credit-purchase"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                              transaction.type === "credit-purchase"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-blue-50 text-blue-700 border-blue-200"
                             }
                           >
                             <span className="flex items-center gap-1">
-                              {transaction.type === "subscription" ? (
-                                <CreditCard className="h-3 w-3" />
-                              ) : transaction.type === "credit-purchase" ? (
+                              {transaction.type === "credit-purchase" ? (
                                 <Zap className="h-3 w-3" />
                               ) : (
                                 <History className="h-3 w-3" />
                               )}
-                              {transaction.type === "subscription"
-                                ? "Subscription"
-                                : transaction.type === "credit-purchase"
-                                  ? "Purchase"
-                                  : "Usage"}
+                              {transaction.type === "credit-purchase" ? "Purchase" : "Usage"}
                             </span>
                           </Badge>
                         </td>
@@ -269,8 +299,7 @@ export default function SubscriptionHistoryPage() {
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {(transaction.type === "subscription" || transaction.type === "credit-purchase") &&
-                          transaction.amount > 0 ? (
+                          {transaction.type === "credit-purchase" && transaction.amount > 0 ? (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -305,45 +334,8 @@ export default function SubscriptionHistoryPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Subscription</CardTitle>
-              <CardDescription>Details about your current subscription plan</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-medium">Pro Plan</h3>
-                      <p className="text-sm text-slate-500">$19.00/month</p>
-                    </div>
-                    <Badge className="bg-emerald-100 text-emerald-800">Active</Badge>
-                  </div>
-                  <div className="mt-4 text-sm">
-                    <p className="text-slate-600">Next billing date: June 15, 2023</p>
-                    <p className="text-slate-600 mt-1">Started on: January 15, 2023</p>
-                  </div>
-                </div>
-                <Button variant="outline" className="w-full">
-                  Manage Subscription
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
+      <div className="max-w-md mx-auto">
+        <div>
           <Card>
             <CardHeader>
               <CardTitle>Credit Summary</CardTitle>
@@ -354,21 +346,25 @@ export default function SubscriptionHistoryPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                     <h3 className="text-sm font-medium text-slate-500">Available Credits</h3>
-                    <p className="text-2xl font-bold mt-1">2,450</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {creditStats ? creditStats.currentCredits.toLocaleString() : 'N/A'}
+                    </p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                     <h3 className="text-sm font-medium text-slate-500">Used This Month</h3>
-                    <p className="text-2xl font-bold mt-1">550</p>
+                    <p className="text-2xl font-bold mt-1">
+                      {creditStats ? creditStats.monthlyUsage.toLocaleString() : '...'}
+                    </p>
                   </div>
                 </div>
-                <Button variant="outline" className="w-full">
-                  Buy More Credits
-                </Button>
+                <Link href="/dashboard/settings" className="w-full">
+                   Buy More Credits
+                 </Link>
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

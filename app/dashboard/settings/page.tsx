@@ -245,312 +245,17 @@ export default function SettingsPage() {
         {/* Subscription Tab */}
         <TabsContent value="subscription">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Subscription Plan</CardTitle>
-                <CardDescription>Manage your subscription and billing</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium">Current Plan</h3>
-                        <p className="text-sm text-slate-500">
-                          {subscriptionPlan === "free"
-                            ? "Free Plan"
-                            : subscriptionPlan === "pro"
-                              ? "Pro Plan ($19/month)"
-                              : "Enterprise Plan ($49/month)"}
-                        </p>
-                      </div>
-                      <Badge
-                        className={
-                          subscriptionPlan === "free"
-                            ? "bg-slate-100 text-slate-800"
-                            : subscriptionPlan === "pro"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-purple-100 text-purple-800"
-                        }
-                      >
-                        {subscriptionPlan === "free" ? "Free" : subscriptionPlan === "pro" ? "Pro" : "Enterprise"}
-                      </Badge>
-                    </div>
 
-                    {subscriptionPlan !== "free" && (
-                      <div className="mt-4 text-sm">
-                        <p className="text-slate-600">Next billing date: {subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : "June 15, 2023"}</p>
-                        <div className="mt-2 flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                const response = await fetch('/api/stripe/create-portal-session', {
-                                  method: 'POST',
-                                });
-                                const { url } = await response.json();
-                                window.location.href = url;
-                              } catch (error) {
-                                toast({
-                                  title: "Error",
-                                  description: "Failed to open customer portal",
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            disabled={stripeLoading}
-                          >
-                            {stripeLoading ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Loading...
-                              </>
-                            ) : (
-                              "Manage Subscription"
-                            )}
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-red-600 hover:text-red-700"
-                            onClick={handleCancelSubscription}
-                            disabled={processingPlan !== null}
-                          >
-                            {processingPlan === "free" ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              "Cancel Subscription"
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Free Plan */}
-                    <Card className={`border ${subscriptionPlan === "free" ? "border-slate-400" : "border-slate-200"}`}>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg">Free</CardTitle>
-                        <CardDescription>Basic features for personal use</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold mb-4">
-                          $0<span className="text-sm font-normal text-slate-500">/month</span>
-                        </div>
-                        <ul className="space-y-2 text-sm">
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>100 Credits</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Basic SEO tools</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>1 project</span>
-                          </li>
-                          <li className="flex items-center">
-                            <X className="h-4 w-4 text-slate-400 mr-2" />
-                            <span className="text-slate-500">AI recommendations</span>
-                          </li>
-                          <li className="flex items-center">
-                            <X className="h-4 w-4 text-slate-400 mr-2" />
-                            <span className="text-slate-500">Advanced analytics</span>
-                          </li>
-                        </ul>
-                      </CardContent>
-                      <CardFooter>
-                        {subscriptionPlan === "free" ? (
-                          <Button disabled className="w-full">
-                            Current Plan
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleCancelSubscription}
-                            disabled={processingPlan !== null}
-                          >
-                            {processingPlan === "free" ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              "Downgrade"
-                            )}
-                          </Button>
-                        )}
-                      </CardFooter>
-                    </Card>
-
-                    {/* Pro Plan */}
-                    <Card
-                      className={`border ${subscriptionPlan === "pro" ? "border-emerald-400" : "border-slate-200"}`}
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle className="text-lg">Pro</CardTitle>
-                            <CardDescription>Advanced features for professionals</CardDescription>
-                          </div>
-                          <Badge className="bg-emerald-100 text-emerald-800">Popular</Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold mb-4">
-                          $19<span className="text-sm font-normal text-slate-500">/month</span>
-                        </div>
-                        <ul className="space-y-2 text-sm">
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>2500 Credits</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>All SEO tools</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>10 projects</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>AI recommendations</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Advanced analytics</span>
-                          </li>
-                        </ul>
-                      </CardContent>
-                      <CardFooter>
-                        {subscriptionPlan === "pro" ? (
-                          <Button disabled className="w-full">
-                            Current Plan
-                          </Button>
-                        ) : (
-                          <Button
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => handleSubscribe("pro")}
-                            disabled={processingPlan !== null}
-                          >
-                            {processingPlan === "pro" ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
-                              </>
-                            ) : subscriptionPlan === "enterprise" ? (
-                              "Downgrade"
-                            ) : (
-                              "Upgrade"
-                            )}
-                          </Button>
-                        )}
-                      </CardFooter>
-                    </Card>
-
-                    {/* Enterprise Plan */}
-                    <Card
-                      className={`border ${subscriptionPlan === "enterprise" ? "border-purple-400" : "border-slate-200"}`}
-                    >
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg">Enterprise</CardTitle>
-                        <CardDescription>Premium features for teams</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold mb-4">
-                          $49<span className="text-sm font-normal text-slate-500">/month</span>
-                        </div>
-                        <ul className="space-y-2 text-sm">
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Unlimited Credits</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>All SEO tools</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Unlimited projects</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Priority AI recommendations</span>
-                          </li>
-                          <li className="flex items-center">
-                            <Check className="h-4 w-4 text-emerald-600 mr-2" />
-                            <span>Team collaboration</span>
-                          </li>
-                        </ul>
-                      </CardContent>
-                      <CardFooter>
-                        {subscriptionPlan === "enterprise" ? (
-                          <Button disabled className="w-full">
-                            Current Plan
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleSubscribe("enterprise")}
-                            disabled={processingPlan !== null}
-                          >
-                            {processingPlan === "enterprise" ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              "Upgrade"
-                            )}
-                          </Button>
-                        )}
-                      </CardFooter>
-                    </Card>
-                  </div>
-
-                  {/* Plan Change Notification */}
-                  {subscriptionPlan !== "free" && (
-                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 flex gap-3">
-                      <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-amber-800">Plan Changes & Billing</h4>
-                        <div className="text-sm text-amber-700 mt-1 space-y-1">
-                          <p>
-                            <strong>Upgrades:</strong> Take effect immediately with prorated billing.
-                          </p>
-                          <p>
-                             <strong>Downgrades & Cancellations:</strong> Take effect at the end of your current billing period ({subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : "next billing date"}) to ensure you get full value from your current plan.
-                           </p>
-                          <p>
-                            You'll continue to have access to all {subscriptionPlan} features until then.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 flex gap-3">
+       <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 flex gap-3">
                     <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-medium text-blue-800">Use your own API keys</h4>
                       <p className="text-sm text-blue-700 mt-1">
-                        If you prefer to use your own API keys instead of a subscription, you can configure them in the
+                        If you prefer to use your own API keys instead of a buying credits, you can configure them in the
                         API Keys tab.
                       </p>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -565,7 +270,7 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50">
                         <CardContent className="pt-6">
                           <div className="text-center">
@@ -581,15 +286,6 @@ export default function SettingsPage() {
                           <div className="text-center">
                             <h3 className="text-2xl font-bold text-slate-900">{creditsUsedThisMonth.toLocaleString()}</h3>
                             <p className="text-sm text-slate-600">Credits Used This Month</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardContent className="pt-6">
-                          <div className="text-center">
-                            <h3 className="text-2xl font-bold text-slate-900">${currentBalance.toFixed(2)}</h3>
-                            <p className="text-sm text-slate-600">Current Balance</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -658,41 +354,6 @@ export default function SettingsPage() {
                             </Button>
                           </div>
                         </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-medium mb-3">Payment Methods</h3>
-                      {paymentMethod ? (
-                        <div className="border rounded-lg p-4 bg-white">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="bg-slate-100 p-2 rounded">
-                                <CreditCard className="h-5 w-5 text-slate-600" />
-                              </div>
-                              <div>
-                                <p className="font-medium">
-                                  •••• •••• •••• {paymentMethod.last4}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                  {paymentMethod.brand?.toUpperCase()} • Expires {paymentMethod.expMonth?.toString().padStart(2, '0')}/{paymentMethod.expYear?.toString().slice(-2)}
-                                </p>
-                              </div>
-                            </div>
-                            <Badge>Default</Badge>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="border rounded-lg p-4 bg-gray-50 text-center">
-                          <CreditCard className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600 mb-2">No payment method added</p>
-                          <p className="text-xs text-gray-500">Add a payment method to purchase credits or subscribe to plans</p>
-                        </div>
-                      )}
-                      <div className="mt-3">
-                        <Button variant="outline" size="sm">
-                          {paymentMethod ? 'Manage Payment Methods' : 'Add Payment Method'}
-                        </Button>
                       </div>
                     </div>
                   </div>
