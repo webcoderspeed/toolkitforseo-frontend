@@ -27,7 +27,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/components/ui/use-toast";
 import { Suspense } from "react";
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { useUserSetup } from "@/hooks/use-user-setup";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -39,7 +38,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { toast } = useToast();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, isSignedIn } = useUser();
-  const { isSetupComplete, isLoading: isSetupLoading } = useUserSetup();
 
   const [isLoading, setIsLoading] = useState(true);
   const [credits, setCredits] = useState(2450);
