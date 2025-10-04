@@ -59,6 +59,7 @@ model UserPreferences {
   userId                String  @unique
   emailNotifications    Boolean @default(true)
   defaultAiVendor       String  @default("gemini") // gemini, openai
+  apiKeys               Json?   // Encrypted API keys storage
   
   user                  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   

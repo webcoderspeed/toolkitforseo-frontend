@@ -149,9 +149,9 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
 async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
   console.log('💰 Processing credit purchase for session:', session.id);
-  const { userId, credits } = session.metadata || {};
+  const { userId, credits, clerkId } = session.metadata || {};
 
-  console.log('📋 Session metadata:', { userId, credits, sessionId: session.id });
+  console.log('📋 Session metadata:', { userId, credits, clerkId, sessionId: session.id });
 
   if (!userId || !credits) {
     console.error('❌ Missing metadata in checkout session:', session.id);
@@ -169,6 +169,41 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
     console.log('📝 Updated purchase records:', updatedPurchase.count);
 
     console.log('➕ Adding credits to user account...');
+    
+    // First, check if user exists
+    const existingUser = await db.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!existingUser) {
+      console.error(`❌ User not found with ID: ${userId}`);
+      
+      // If we have clerkId, try to find user by clerkId
+      if (clerkId) {
+        console.log(`🔍 Attempting to find user by Clerk ID: ${clerkId}`);
+        const userByClerkId = await db.user.findUnique({
+          where: { clerkId: clerkId }
+        });
+        
+        if (userByClerkId) {
+          console.log(`✅ Found user by Clerk ID: ${userByClerkId.id}`);
+          // Update credits using the correct user ID
+          const updatedUser = await db.user.update({
+            where: { id: userByClerkId.id },
+            data: {
+              credits: {
+                increment: parseInt(credits)
+              }
+            }
+          });
+          console.log(`✅ Successfully added ${credits} credits to user ${userByClerkId.id}. New balance: ${updatedUser.credits}`);
+          return;
+        }
+      }
+      
+      throw new Error(`User not found: userId=${userId}, clerkId=${clerkId}`);
+    }
+
     // Add credits to user account
     const updatedUser = await db.user.update({
       where: { id: userId },
@@ -194,9 +229,42 @@ async function handleCustomerCreated(customer: Stripe.Customer) {
   
   try {
     const userId = customer.metadata?.userId;
+    const clerkId = customer.metadata?.clerkId;
+    
     if (!userId) {
       console.log('No userId in customer metadata, skipping database update');
       return;
+    }
+
+    // First, check if user exists
+    const existingUser = await db.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!existingUser) {
+      console.error(`❌ User not found with ID: ${userId}`);
+      
+      // If we have clerkId, try to find user by clerkId
+      if (clerkId) {
+        console.log(`🔍 Attempting to find user by Clerk ID: ${clerkId}`);
+        const userByClerkId = await db.user.findUnique({
+          where: { clerkId: clerkId }
+        });
+        
+        if (userByClerkId) {
+          console.log(`✅ Found user by Clerk ID: ${userByClerkId.id}`);
+          // Update user with Stripe customer ID using the correct user ID
+          await db.user.update({
+            where: { id: userByClerkId.id },
+            data: { stripeCustomerId: customer.id }
+          });
+          console.log(`✅ Updated user ${userByClerkId.id} with Stripe customer ID ${customer.id}`);
+          return;
+        }
+      }
+      
+      console.error(`User not found: userId=${userId}, clerkId=${clerkId}`);
+      return; // Don't throw error for customer creation, just log it
     }
 
     // Update user record with Stripe customer ID
@@ -219,7 +287,41 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
   try {
     // Handle successful one-time payments that aren't part of checkout sessions
     if (paymentIntent.metadata?.userId && paymentIntent.metadata?.credits) {
-      const { userId, credits } = paymentIntent.metadata;
+      const { userId, credits, clerkId } = paymentIntent.metadata;
+      
+      // First, check if user exists
+      const existingUser = await db.user.findUnique({
+        where: { id: userId }
+      });
+
+      if (!existingUser) {
+        console.error(`❌ User not found with ID: ${userId}`);
+        
+        // If we have clerkId, try to find user by clerkId
+        if (clerkId) {
+          console.log(`🔍 Attempting to find user by Clerk ID: ${clerkId}`);
+          const userByClerkId = await db.user.findUnique({
+            where: { clerkId: clerkId }
+          });
+          
+          if (userByClerkId) {
+            console.log(`✅ Found user by Clerk ID: ${userByClerkId.id}`);
+            // Update credits using the correct user ID
+            await db.user.update({
+              where: { id: userByClerkId.id },
+              data: {
+                credits: {
+                  increment: parseInt(credits)
+                }
+              }
+            });
+            console.log(`✅ Added ${credits} credits to user ${userByClerkId.id} from payment intent`);
+            return;
+          }
+        }
+        
+        throw new Error(`User not found: userId=${userId}, clerkId=${clerkId}`);
+      }
       
       await db.user.update({
         where: { id: userId },

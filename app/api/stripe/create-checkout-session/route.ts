@@ -78,7 +78,8 @@ export async function POST(req: NextRequest) {
           },
         ],
         metadata: {
-          userId: userId,
+          userId: user.id, // Use database user ID instead of Clerk ID
+          clerkId: userId, // Keep Clerk ID for reference
           packageType: packageKey,
           credits: creditPackage.credits.toString(),
           type: 'credit_purchase',
@@ -107,7 +108,8 @@ export async function POST(req: NextRequest) {
           },
         ],
         metadata: {
-          userId: userId,
+          userId: user.id, // Use database user ID instead of Clerk ID
+          clerkId: userId, // Keep Clerk ID for reference
           planType: plan.name,
         },
       };

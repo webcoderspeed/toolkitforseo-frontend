@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   LinkIcon,
@@ -58,6 +58,27 @@ export default function BacklinksPage() {
     domains: 0,
   })
 
+  // Load user backlinks on component mount
+  useEffect(() => {
+    const loadUserBacklinks = async () => {
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/user/backlinks')
+        if (response.ok) {
+          const data = await response.json()
+          setBacklinks(data.backlinks)
+          setBacklinkStats(data.stats)
+        }
+      } catch (error) {
+        console.error('Error loading user backlinks:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadUserBacklinks()
+  }, [])
+
   const handleExportBacklinks = (type: "all" | "domains" = "all") => {
     // Create CSV content
     let csvContent = ""
@@ -112,7 +133,7 @@ export default function BacklinksPage() {
     })
   }
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!domain.trim() || !domain.includes(".")) {
       toast({
         title: "Invalid domain",
@@ -124,11 +145,29 @@ export default function BacklinksPage() {
 
     setIsAnalyzing(true)
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Fetch user backlinks from API
+      const response = await fetch('/api/user/backlinks')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch backlinks')
+      }
+
+      const data = await response.json()
+      
+      setBacklinks(data.backlinks)
+      setBacklinkStats(data.stats)
+      
+      toast({
+        title: "Analysis complete",
+        description: `Found ${data.stats.total} backlinks from ${data.stats.domains} domains`,
+      })
+    } catch (error) {
+      console.error('Error fetching backlinks:', error)
+      
+      // Fallback to mock data if API fails
       const mockBacklinks: Backlink[] = []
 
-      // Generate 20 random backlinks
       for (let i = 0; i < 20; i++) {
         const authority = Math.floor(Math.random() * 100)
         const status = Math.random() > 0.3 ? "follow" : "nofollow"
@@ -145,7 +184,6 @@ export default function BacklinksPage() {
         })
       }
 
-      // Calculate stats
       const stats = {
         total: mockBacklinks.length,
         follow: mockBacklinks.filter((b) => b.status === "follow").length,
@@ -158,8 +196,15 @@ export default function BacklinksPage() {
 
       setBacklinks(mockBacklinks)
       setBacklinkStats(stats)
+      
+      toast({
+        title: "Using sample data",
+        description: "Showing sample backlinks. Try the backlink checker tool for real analysis.",
+        variant: "default",
+      })
+    } finally {
       setIsAnalyzing(false)
-    }, 3000)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

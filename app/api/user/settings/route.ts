@@ -1,6 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import crypto from 'crypto'
+
+// Simple encryption for API keys (in production, use a proper encryption service)
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(process.env.API_KEY_ENCRYPTION_SECRET || 'default-key-change-in-production').digest()
+
+function encrypt(text: string): string {
+  if (!text) return ''
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv)
+  let encrypted = cipher.update(text, 'utf8', 'hex')
+  encrypted += cipher.final('hex')
+  return iv.toString('hex') + ':' + encrypted
+}
+
+function decrypt(encryptedText: string): string {
+  if (!encryptedText) return ''
+  try {
+    const parts = encryptedText.split(':')
+    if (parts.length !== 2) return ''
+    const iv = Buffer.from(parts[0], 'hex')
+    const encrypted = parts[1]
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv)
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+    decrypted += decipher.final('utf8')
+    return decrypted
+  } catch (error) {
+    console.error('Error decrypting API key:', error)
+    return ''
+  }
+}
 
 export async function GET() {
   try {
@@ -106,6 +136,15 @@ export async function GET() {
         preferences: user.userPreferences || {
           emailNotifications: true,
           defaultAiVendor: 'gemini'
+        },
+        apiKeys: user.userPreferences?.apiKeys ? {
+          openai: decrypt((user.userPreferences.apiKeys as any)?.openai || ''),
+          gemini: decrypt((user.userPreferences.apiKeys as any)?.gemini || ''),
+          anthropic: decrypt((user.userPreferences.apiKeys as any)?.anthropic || '')
+        } : {
+          openai: '',
+          gemini: '',
+          anthropic: ''
         }
       }
     })
@@ -134,27 +173,36 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    // Prepare update data
+    const updateData: any = {}
+    const createData: any = { userId: user.id }
+
     // Update user preferences
     if (preferences) {
-      await db.userPreferences.upsert({
-        where: { userId: user.id },
-        update: {
-          emailNotifications: preferences.emailNotifications,
-          defaultAiVendor: preferences.defaultAiVendor || 'gemini'
-        },
-        create: {
-          userId: user.id,
-          emailNotifications: preferences.emailNotifications,
-          defaultAiVendor: preferences.defaultAiVendor || 'gemini'
-        }
-      })
+      updateData.emailNotifications = preferences.emailNotifications
+      updateData.defaultAiVendor = preferences.defaultAiVendor || 'gemini'
+      createData.emailNotifications = preferences.emailNotifications
+      createData.defaultAiVendor = preferences.defaultAiVendor || 'gemini'
     }
 
-    // Note: API keys should be handled separately with proper encryption
-    // This is a simplified implementation
+    // Handle API keys with encryption
     if (apiKeys) {
-      // In a real implementation, you would encrypt these keys
-      console.log('API keys update requested:', apiKeys)
+      const encryptedApiKeys = {
+        openai: apiKeys.openai ? encrypt(apiKeys.openai) : '',
+        gemini: apiKeys.gemini ? encrypt(apiKeys.gemini) : '',
+        anthropic: apiKeys.anthropic ? encrypt(apiKeys.anthropic) : ''
+      }
+      updateData.apiKeys = encryptedApiKeys
+      createData.apiKeys = encryptedApiKeys
+    }
+
+    // Only update if there's data to update
+    if (Object.keys(updateData).length > 0) {
+      await db.userPreferences.upsert({
+        where: { userId: user.id },
+        update: updateData,
+        create: createData
+      })
     }
 
     return NextResponse.json({ success: true })

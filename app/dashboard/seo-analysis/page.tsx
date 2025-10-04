@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   BarChart2,
@@ -39,6 +39,7 @@ interface SEOIssue {
 }
 
 interface PageData {
+  id: string
   url: string
   title: string
   description: string
@@ -47,7 +48,19 @@ interface PageData {
   loadTime: number
   mobileScore: number
   desktopScore: number
+  overallScore: number
   issues: SEOIssue[]
+  analyzedAt: Date
+  userId: string
+}
+
+interface SEOAnalysisStats {
+  totalAnalyses: number
+  averageScore: number
+  criticalIssues: number
+  warningIssues: number
+  successfulChecks: number
+  recentAnalyses: PageData[]
 }
 
 export default function SEOAnalysisPage() {
@@ -58,8 +71,31 @@ export default function SEOAnalysisPage() {
   const [pageData, setPageData] = useState<PageData | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [overallScore, setOverallScore] = useState(0)
+  const [historicalAnalyses, setHistoricalAnalyses] = useState<PageData[]>([])
+  const [analysisStats, setAnalysisStats] = useState<SEOAnalysisStats | null>(null)
 
-  const handleAnalyze = () => {
+  // Load historical analyses when component mounts
+  useEffect(() => {
+    const loadHistoricalAnalyses = async () => {
+      try {
+        setIsLoading(true)
+        const response = await fetch('/api/user/seo-analysis')
+        if (response.ok) {
+          const data = await response.json()
+          setHistoricalAnalyses(data.analyses || [])
+          setAnalysisStats(data.stats || null)
+        }
+      } catch (error) {
+        console.error('Error loading historical analyses:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadHistoricalAnalyses()
+  }, [])
+
+  const handleAnalyze = async () => {
     if (!url.trim() || !url.includes(".")) {
       toast({
         title: "Invalid URL",
@@ -71,84 +107,97 @@ export default function SEOAnalysisPage() {
 
     setIsAnalyzing(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      const mockIssues: SEOIssue[] = [
-        {
-          type: "error",
-          title: "Missing meta description",
-          description:
-            "Your page is missing a meta description. Add a compelling description to improve click-through rates.",
-          impact: "high",
+    try {
+      // Call the real SEO analysis API
+      const response = await fetch('/api/website-seo-score-checker', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        {
-          type: "error",
-          title: "Slow page load time",
-          description: "Your page takes too long to load (3.5s). Optimize images and reduce server response time.",
-          impact: "high",
-        },
-        {
-          type: "warning",
-          title: "Low word count",
-          description: "Your page has only 320 words. Consider adding more comprehensive content (aim for 800+ words).",
-          impact: "medium",
-        },
-        {
-          type: "warning",
-          title: "Image alt tags missing",
-          description:
-            "3 images on your page are missing alt tags. Add descriptive alt text for better accessibility and SEO.",
-          impact: "medium",
-        },
-        {
-          type: "warning",
-          title: "H1 tag not optimized",
-          description: "Your H1 tag doesn't include your target keyword. Optimize it for better relevance.",
-          impact: "medium",
-        },
-        {
-          type: "success",
-          title: "Mobile-friendly design",
-          description: "Your page is responsive and displays well on mobile devices.",
-          impact: "high",
-        },
-        {
-          type: "success",
-          title: "HTTPS enabled",
-          description: "Your site is served over HTTPS, which is good for security and SEO.",
-          impact: "medium",
-        },
-        {
-          type: "success",
-          title: "Good URL structure",
-          description: "Your URL is clean, descriptive, and includes relevant keywords.",
-          impact: "low",
-        },
-      ]
+        body: JSON.stringify({
+          url: url.startsWith("http") ? url : `https://${url}`,
+        }),
+      })
 
-      const mockData: PageData = {
-        url: url.startsWith("http") ? url : `https://${url}`,
-        title: "Homepage - Your Website",
-        description: "",
-        h1: "Welcome to Our Website",
-        wordCount: 320,
-        loadTime: 3.5,
-        mobileScore: 68,
-        desktopScore: 82,
-        issues: mockIssues,
+      if (response.ok) {
+        const result = await response.json()
+        
+        // Transform API response to match our PageData interface
+        const analysisData: PageData = {
+          id: `analysis-${Date.now()}`,
+          url: result.url || url,
+          title: result.scrapedData?.title || "Website Analysis",
+          description: result.scrapedData?.description || "",
+          h1: result.scrapedData?.h1 || "",
+          wordCount: result.scrapedData?.wordCount || 0,
+          loadTime: result.lighthouseResults?.performance?.loadTime || 0,
+          mobileScore: result.lighthouseResults?.performance?.mobileScore || 0,
+          desktopScore: result.lighthouseResults?.performance?.desktopScore || 0,
+          overallScore: result.overallScore || 0,
+          issues: result.issues || [],
+          analyzedAt: new Date(),
+          userId: 'current-user'
+        }
+
+        setOverallScore(result.overallScore || 0)
+        setPageData(analysisData)
+        
+        toast({
+          title: "Analysis Complete",
+          description: `SEO analysis completed with a score of ${result.overallScore || 0}/100`,
+        })
+
+        // Refresh historical analyses
+        const historyResponse = await fetch('/api/user/seo-analysis')
+        if (historyResponse.ok) {
+          const historyData = await historyResponse.json()
+          setHistoricalAnalyses(historyData.analyses || [])
+          setAnalysisStats(historyData.stats || null)
+        }
+      } else {
+        // Fallback to sample data if API fails
+        const fallbackData: PageData = {
+          id: `sample-${Date.now()}`,
+          url: url.startsWith("http") ? url : `https://${url}`,
+          title: "Sample Analysis - API Unavailable",
+          description: "This is sample data as the API is currently unavailable.",
+          h1: "Sample Website Analysis",
+          wordCount: 500,
+          loadTime: 2.5,
+          mobileScore: 75,
+          desktopScore: 85,
+          overallScore: 78,
+          issues: [
+            {
+              type: "warning",
+              title: "Using sample data",
+              description: "This analysis uses sample data. Please try again later for real results.",
+              impact: "low"
+            }
+          ],
+          analyzedAt: new Date(),
+          userId: 'current-user'
+        }
+
+        setOverallScore(78)
+        setPageData(fallbackData)
+        
+        toast({
+          title: "Sample Analysis",
+          description: "Showing sample data. Please try again later for real analysis.",
+          variant: "destructive",
+        })
       }
-
-      // Calculate overall score
-      const errorCount = mockIssues.filter((issue) => issue.type === "error").length
-      const warningCount = mockIssues.filter((issue) => issue.type === "warning").length
-      const successCount = mockIssues.filter((issue) => issue.type === "success").length
-
-      const score = Math.round(((successCount * 10) / (errorCount * 10 + warningCount * 5 + successCount * 10)) * 100)
-
-      setOverallScore(score)
-      setPageData(mockData)
+    } catch (error) {
+      console.error('SEO analysis error:', error)
+      toast({
+        title: "Analysis Failed",
+        description: "Failed to analyze the website. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
       setIsAnalyzing(false)
-    }, 3000)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

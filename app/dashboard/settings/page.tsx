@@ -68,6 +68,15 @@ export default function SettingsPage() {
           weeklyReport: true,
           newFeatures: true
         })
+        
+        // Load API keys if available
+        if (user.apiKeys) {
+          setApiKeys({
+            openai: user.apiKeys.openai || "",
+            gemini: user.apiKeys.gemini || "",
+            anthropic: user.apiKeys.anthropic || "",
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching user settings:', error)
@@ -81,18 +90,42 @@ export default function SettingsPage() {
     setApiKeys((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSaveApiKeys = () => {
+  const handleSaveApiKeys = async () => {
     setIsSaving(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false)
-
-      toast({
-        title: "API keys saved",
-        description: "Your API keys have been updated successfully.",
+    try {
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKeys: {
+            openai: apiKeys.openai,
+            gemini: apiKeys.gemini,
+            anthropic: apiKeys.anthropic,
+          }
+        })
       })
-    }, 1500)
+
+      if (response.ok) {
+        toast({
+          title: "API keys saved",
+          description: "Your API keys have been updated successfully.",
+        })
+      } else {
+        throw new Error('Failed to save API keys')
+      }
+    } catch (error) {
+      console.error('Error saving API keys:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save API keys. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleToggleNotification = (key: string, checked: boolean) => {
