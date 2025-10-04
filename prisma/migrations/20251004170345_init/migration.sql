@@ -1,5 +1,8 @@
 -- CreateEnum
-CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'CANCELED', 'TRIALING');
+CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'CANCELED', 'TRIALING', 'INCOMPLETE', 'INCOMPLETE_EXPIRED', 'PAST_DUE', 'UNPAID');
+
+-- CreateEnum
+CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -11,6 +14,8 @@ CREATE TABLE "users" (
     "imageUrl" TEXT,
     "username" TEXT,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "credits" INTEGER NOT NULL DEFAULT 0,
+    "stripeCustomerId" TEXT,
     "lastLoginAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -24,6 +29,7 @@ CREATE TABLE "user_preferences" (
     "userId" TEXT NOT NULL,
     "emailNotifications" BOOLEAN NOT NULL DEFAULT true,
     "defaultAiVendor" TEXT NOT NULL DEFAULT 'gemini',
+    "apiKeys" JSONB,
 
     CONSTRAINT "user_preferences_pkey" PRIMARY KEY ("id")
 );
@@ -39,6 +45,12 @@ CREATE TABLE "subscriptions" (
     "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "stripeCustomerId" TEXT,
+    "stripeSubscriptionId" TEXT,
+    "stripePriceId" TEXT,
+    "canceledAt" TIMESTAMP(3),
+    "trialStart" TIMESTAMP(3),
+    "trialEnd" TIMESTAMP(3),
 
     CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id")
 );
@@ -57,8 +69,26 @@ CREATE TABLE "subscription_plans" (
     "limits" JSONB NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "stripePriceId" TEXT,
+    "stripeProductId" TEXT,
 
     CONSTRAINT "subscription_plans_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "credit_purchases" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "credits" INTEGER NOT NULL,
+    "amount" DECIMAL(10,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "stripePaymentIntentId" TEXT,
+    "stripeSessionId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "credit_purchases_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -80,6 +110,7 @@ CREATE TABLE "tool_usage" (
     "toolName" TEXT NOT NULL,
     "toolCategory" TEXT NOT NULL,
     "success" BOOLEAN NOT NULL DEFAULT true,
+    "creditsUsed" INTEGER NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "tool_usage_pkey" PRIMARY KEY ("id")
@@ -148,10 +179,25 @@ CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 CREATE UNIQUE INDEX "users_username_key" ON "users"("username");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "users_stripeCustomerId_key" ON "users"("stripeCustomerId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "user_preferences_userId_key" ON "user_preferences"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "subscriptions_userId_key" ON "subscriptions"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "subscriptions_stripeSubscriptionId_key" ON "subscriptions"("stripeSubscriptionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "subscription_plans_stripePriceId_key" ON "subscription_plans"("stripePriceId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "credit_purchases_stripePaymentIntentId_key" ON "credit_purchases"("stripePaymentIntentId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "credit_purchases_stripeSessionId_key" ON "credit_purchases"("stripeSessionId");
 
 -- AddForeignKey
 ALTER TABLE "user_preferences" ADD CONSTRAINT "user_preferences_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -161,6 +207,9 @@ ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_userId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_planId_fkey" FOREIGN KEY ("planId") REFERENCES "subscription_plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "credit_purchases" ADD CONSTRAINT "credit_purchases_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "usage_records" ADD CONSTRAINT "usage_records_subscriptionId_fkey" FOREIGN KEY ("subscriptionId") REFERENCES "subscriptions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
