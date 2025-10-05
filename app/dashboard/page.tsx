@@ -92,25 +92,8 @@ export default function Dashboard() {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-slate-500">SEO Score</p>
-                <h3 className="text-2xl font-bold mt-1">{dashboardData?.overview?.seoScore || 0}/100</h3>
-                <p className="text-xs text-emerald-600 flex items-center mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  Based on tool usage
-                </p>
-              </div>
-              <div className="bg-emerald-100 p-2 rounded-lg">
-                <BarChart className="h-5 w-5 text-emerald-600" />
-              </div>
-            </div>
-            <Progress value={dashboardData?.overview?.seoScore || 0} className="h-1.5 mt-4" />
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
 
         <Card>
           <CardContent className="p-6">

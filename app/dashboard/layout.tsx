@@ -351,13 +351,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </Button>
 
               <div className="relative">
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full"></span>
-                </Button>
-              </div>
-
-              <div className="relative">
                 <div
                   className="flex items-center gap-3 cursor-pointer"
                   onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}

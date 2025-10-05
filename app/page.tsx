@@ -46,11 +46,11 @@ export default function LandingPage() {
   if (!isMounted) return null
 
   const handleStartTrial = () => {
-    router.push("/auth/signup")
+    router.push("/dashboard")
   }
 
   const handleExploreTools = () => {
-    router.push("/tools")
+    router.push("/dashboard")
   }
 
   const handleSubscribe = async (e: React.FormEvent) => {
