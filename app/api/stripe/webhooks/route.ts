@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import Stripe from 'stripe'
 import { db } from '@/lib/db'
 import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '@/constants'
+import { sendCreditPurchaseConfirmationEmail } from '@/app/actions'
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2025-09-30.clover',
 })
@@ -227,6 +228,49 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
     });
 
     console.log(`✅ Successfully added ${credits} credits to user ${userId}. New balance: ${updatedUser.credits}`);
+
+    // Send confirmation email
+    try {
+      console.log('📧 Sending credit purchase confirmation email...');
+      
+      // Get the credit purchase record for email details
+      let creditPurchase;
+      if (creditPurchaseId) {
+        creditPurchase = await db.creditPurchase.findUnique({
+          where: { id: creditPurchaseId },
+          include: { user: true }
+        });
+      } else {
+        creditPurchase = await db.creditPurchase.findFirst({
+          where: { stripeSessionId: session.id },
+          include: { user: true }
+        });
+      }
+
+      if (creditPurchase && creditPurchase.user) {
+        const userName = creditPurchase.user.firstName && creditPurchase.user.lastName 
+          ? `${creditPurchase.user.firstName} ${creditPurchase.user.lastName}`
+          : creditPurchase.user.firstName || creditPurchase.user.email.split('@')[0];
+
+        await sendCreditPurchaseConfirmationEmail({
+          email: creditPurchase.user.email,
+          userName: userName,
+          credits: creditPurchase.credits,
+          amount: parseFloat(creditPurchase.amount.toString()),
+          currency: creditPurchase.currency,
+          transactionId: session.id,
+          packageType: session.metadata?.packageType ?? 'Standard',
+          purchaseDate: creditPurchase.createdAt
+        });
+
+        console.log('✅ Credit purchase confirmation email sent successfully');
+      } else {
+        console.log('⚠️ Could not find credit purchase record for email');
+      }
+    } catch (emailError) {
+      console.error('❌ Error sending confirmation email:', emailError);
+      // Don't throw error here as the main transaction was successful
+    }
 
   } catch (error) {
     console.error('❌ Error processing credit purchase:', error);
