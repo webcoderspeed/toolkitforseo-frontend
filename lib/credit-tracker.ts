@@ -8,14 +8,18 @@ export interface CreditCheckResult {
   message: string;
 }
 
+export interface CheckCreditsParams {
+  toolName: string;
+  creditsRequired?: number;
+}
 
 /**
  * Check if user has enough credits for a tool
  */
 export async function checkCredits(
-  toolName: string,
-  creditsRequired?: number
+  params: CheckCreditsParams
 ): Promise<CreditCheckResult> {
+  const { toolName, creditsRequired } = params;
   // Use centralized credit configuration
   const actualCreditsRequired = creditsRequired ?? getToolCreditCost(toolName);
   try {
@@ -72,15 +76,20 @@ export async function checkCredits(
   }
 }
 
+export interface RecordUsageParams {
+  toolName: string;
+  toolCategory?: string;
+  creditsUsed?: number;
+  success?: boolean;
+}
+
 /**
  * Record tool usage and deduct credits
  */
 export async function recordUsage(
-  toolName: string,
-  toolCategory?: string,
-  creditsUsed?: number,
-  success: boolean = true
+  params: RecordUsageParams
 ): Promise<void> {
+  const { toolName, toolCategory, creditsUsed, success = true } = params;
   // Use centralized credit configuration
   const actualCategory = toolCategory ?? getToolCategory(toolName);
   const actualCreditsUsed = creditsUsed ?? getToolCreditCost(toolName);

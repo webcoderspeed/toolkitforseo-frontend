@@ -35,30 +35,38 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Get user from database
     const user = await db.user.findUnique({
-      where: { clerkId: userId },
-      include: {
-        toolUsage: {
-          where: {
-            toolName: 'backlink-checker'
-          },
-          orderBy: {
-            createdAt: 'desc'
-          },
-          take: 50 // Get last 50 backlink checks
-        }
-      }
+      where: { clerkId: userId }
     });
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Get user's subscription first
+    const subscription = await db.subscription.findFirst({
+      where: {
+        userId: user.id
+      }
+    });
+
+    // Get user's usage records for backlink checker
+    const usageRecords = await db.usageRecord.findMany({
+      where: {
+        subscriptionId: subscription?.id,
+        toolName: 'backlink-checker'
+      },
+      orderBy: {
+        date: 'desc'
+      },
+      take: 50 // Get last 50 backlink checks
+    });
+
     // Generate backlinks based on user's tool usage history
     const backlinks: UserBacklink[] = [];
     
     // If user has used backlink checker, generate realistic data based on their usage
-    if (user.toolUsage.length > 0) {
-      user.toolUsage.forEach((usage, index) => {
+    if (usageRecords.length > 0) {
+      usageRecords.forEach((usage: any, index: number) => {
         // Generate 3-5 backlinks per tool usage
         const backlinkCount = Math.floor(Math.random() * 3) + 3;
         
@@ -77,7 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             discovered: getRandomDate(365),
             lastSeen: getRandomDate(30),
             userId: user.id,
-            createdAt: usage.createdAt
+            createdAt: usage.date
           });
         }
       });

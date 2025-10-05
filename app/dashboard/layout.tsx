@@ -19,7 +19,25 @@ import {
   User,
   History,
   ChevronDown,
+  ChevronRight,
   CreditCard,
+  TrendingUp,
+  Users,
+  Wrench,
+  FileText,
+  Globe,
+  Shield,
+  Target,
+  Edit,
+  CheckCircle,
+  Gauge,
+  Eye,
+  Hash,
+  Type,
+  Repeat,
+  AlertTriangle,
+  Link2,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,6 +60,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [credits, setCredits] = useState(0);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchCreditStats = async () => {
@@ -101,6 +120,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     };
   }, [isProfileMenuOpen]);
 
+  // Auto-close tools menu on mobile when sidebar closes
+  useEffect(() => {
+    if (!isSidebarOpen) {
+      setIsToolsMenuOpen(false);
+    }
+  }, [isSidebarOpen]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -116,6 +142,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const isActive = (path: string) => {
     return pathname === path || pathname?.startsWith(`${path}/`);
   };
+
+  const tools = [
+    { name: "AI Content Detector", path: "/dashboard/tools/ai-content-detector", icon: Eye },
+    { name: "Anchor Text Distribution", path: "/dashboard/tools/anchor-text-distribution", icon: Link2 },
+    { name: "Article Rewriter", path: "/dashboard/tools/article-rewriter", icon: Edit },
+    { name: "Backlink Checker", path: "/dashboard/tools/backlink-checker", icon: LinkIcon },
+    { name: "Backlink Maker", path: "/dashboard/tools/backlink-maker", icon: Link2 },
+    { name: "Competitor Analysis", path: "/dashboard/tools/competitor-analysis", icon: Users },
+    { name: "Essay Rewriter", path: "/dashboard/tools/essay-rewriter", icon: FileText },
+    { name: "Grammar Checker", path: "/dashboard/tools/free-grammar-checker", icon: CheckCircle },
+    { name: "Google Index Checker", path: "/dashboard/tools/google-index-checker", icon: Globe },
+    { name: "Keyword Competition", path: "/dashboard/tools/keyword-competition-tool", icon: Target },
+    { name: "Keyword Research", path: "/dashboard/tools/keyword-research-tool", icon: Search },
+    { name: "Live Keyword Analyzer", path: "/dashboard/tools/live-keyword-analyzer-tool", icon: Activity },
+    { name: "Long Tail Keyword Suggestion", path: "/dashboard/tools/long-tail-keyword-suggestion-tool", icon: Search },
+    { name: "Meta Tag Generator", path: "/dashboard/tools/meta-tag-generator", icon: Hash },
+    { name: "Online Proofreader", path: "/dashboard/tools/online-proofreader", icon: Eye },
+    { name: "Page Speed Test", path: "/dashboard/tools/page-speed-test", icon: Gauge },
+    { name: "Paraphrasing Tool", path: "/dashboard/tools/paraphrasing-tool", icon: Repeat },
+    { name: "Plagiarism Checker", path: "/dashboard/tools/plagiarism-checker", icon: Shield },
+    { name: "Rank Tracker", path: "/dashboard/tools/rank-tracker", icon: TrendingUp },
+    { name: "SEO Keyword Competition", path: "/dashboard/tools/seo-keyword-competition-analysis", icon: Target },
+    { name: "Sentence Checker", path: "/dashboard/tools/sentence-checker", icon: Type },
+    { name: "Sentence Rephraser", path: "/dashboard/tools/sentence-rephraser", icon: Edit },
+    { name: "SSL Checker", path: "/dashboard/tools/ssl-checker", icon: Shield },
+    { name: "Text Summarizer", path: "/dashboard/tools/text-summarizer", icon: FileText },
+    { name: "Valuable Backlink Checker", path: "/dashboard/tools/valuable-backlink-checker", icon: AlertTriangle },
+    { name: "Website Link Count", path: "/dashboard/tools/website-link-count-checker", icon: Hash },
+    { name: "Website SEO Score", path: "/dashboard/tools/website-seo-score-checker", icon: BarChart2 },
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -158,39 +214,50 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <Home className="h-5 w-5" />
               <span>Dashboard</span>
             </Link>
-            <Link
-              href="/dashboard/keyword-research"
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-100 hover:text-emerald-600 ${
-                isActive("/dashboard/keyword-research")
-                  ? "bg-emerald-50 text-emerald-600 font-medium"
-                  : ""
-              }`}
-            >
-              <Search className="h-5 w-5" />
-              <span>Keyword Research</span>
-            </Link>
-            <Link
-              href="/dashboard/seo-analysis"
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-100 hover:text-emerald-600 ${
-                isActive("/dashboard/seo-analysis")
-                  ? "bg-emerald-50 text-emerald-600 font-medium"
-                  : ""
-              }`}
-            >
-              <BarChart2 className="h-5 w-5" />
-              <span>SEO Analysis</span>
-            </Link>
-            <Link
-              href="/dashboard/backlinks"
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-100 hover:text-emerald-600 ${
-                isActive("/dashboard/backlinks")
-                  ? "bg-emerald-50 text-emerald-600 font-medium"
-                  : ""
-              }`}
-            >
-              <LinkIcon className="h-5 w-5" />
-              <span>Backlinks</span>
-            </Link>
+
+            {/* Tools Submenu */}
+            <div>
+              <button
+                onClick={() => setIsToolsMenuOpen(!isToolsMenuOpen)}
+                className={`flex items-center justify-between w-full gap-3 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-100 hover:text-emerald-600 ${
+                  isActive("/dashboard/tools")
+                    ? "bg-emerald-50 text-emerald-600 font-medium"
+                    : ""
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Wrench className="h-5 w-5" />
+                  <span>SEO Tools</span>
+                </div>
+                {isToolsMenuOpen ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+              
+              {isToolsMenuOpen && (
+                <div className="ml-6 mt-1 space-y-1 max-h-64 overflow-y-auto">
+                  {tools.map((tool) => {
+                    const IconComponent = tool.icon;
+                    return (
+                      <Link
+                        key={tool.path}
+                        href={tool.path}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 hover:bg-slate-100 hover:text-emerald-600 text-sm ${
+                          isActive(tool.path)
+                            ? "bg-emerald-50 text-emerald-600 font-medium"
+                            : ""
+                        }`}
+                      >
+                        <IconComponent className="h-4 w-4" />
+                        <span>{tool.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <div className="pt-4 mt-4 border-t border-slate-200">
               <Link

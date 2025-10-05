@@ -37,6 +37,8 @@ model User {
   toolUsages        ToolUsage[]
   userPreferences   UserPreferences?
   creditPurchases   CreditPurchase[]
+  rankTrackingProjects      RankTrackingProject[]
+  competitorAnalysisProjects CompetitorAnalysisProject[]
 
   // TODO: Next Phase - Uncomment for advanced features
   // company           String?
@@ -284,6 +286,8 @@ model Project {
   keywords    KeywordData[]
   backlinks   BacklinkData[]
   sslChecks   SSLCertificate[]
+  rankTrackingProjects      RankTrackingProject[]
+  competitorAnalysisProjects CompetitorAnalysisProject[]
 
   // TODO: Next Phase - Team projects
   // teamId      String?
@@ -360,6 +364,149 @@ model SSLCertificate {
   // updatedAt       DateTime @updatedAt
 
   @@map("ssl_certificates")
+}
+
+// ================================
+// RANK TRACKING & COMPETITOR ANALYSIS (MVP)
+// ================================
+
+model RankTrackingProject {
+  id              String   @id @default(cuid())
+  userId          String
+  projectId       String?
+  name            String
+  targetDomain    String
+  location        String   @default("United States")
+  language        String   @default("en")
+  device          String   @default("desktop") // desktop, mobile
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  project         Project? @relation(fields: [projectId], references: [id])
+  keywords        RankTrackingKeyword[]
+  snapshots       RankingSnapshot[]
+
+  @@map("rank_tracking_projects")
+}
+
+model RankTrackingKeyword {
+  id                    String   @id @default(cuid())
+  rankTrackingProjectId String
+  keyword               String
+  searchVolume          Int?
+  difficulty            Int?
+  cpc                   Decimal? @db.Decimal(10, 2)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  rankTrackingProject   RankTrackingProject @relation(fields: [rankTrackingProjectId], references: [id], onDelete: Cascade)
+  rankings              KeywordRanking[]
+
+  @@unique([rankTrackingProjectId, keyword])
+  @@map("rank_tracking_keywords")
+}
+
+model KeywordRanking {
+  id                      String   @id @default(cuid())
+  rankTrackingKeywordId   String
+  position                Int?     // null if not found in top 100
+  url                     String?  // ranking URL
+  title                   String?  // page title
+  description             String?  // meta description
+  searchEngine            String   @default("google") // google, bing, yahoo
+  device                  String   @default("desktop") // desktop, mobile
+  location                String   @default("United States")
+  checkedAt               DateTime @default(now())
+
+  keyword                 RankTrackingKeyword @relation(fields: [rankTrackingKeywordId], references: [id], onDelete: Cascade)
+
+  @@map("keyword_rankings")
+}
+
+model RankingSnapshot {
+  id                    String   @id @default(cuid())
+  rankTrackingProjectId String
+  totalKeywords         Int
+  averagePosition       Decimal? @db.Decimal(5, 2)
+  keywordsInTop10       Int      @default(0)
+  keywordsInTop50       Int      @default(0)
+  keywordsInTop100      Int      @default(0)
+  visibility            Decimal? @db.Decimal(5, 2)
+  estimatedTraffic      Int?
+  snapshotDate          DateTime @default(now())
+
+  rankTrackingProject   RankTrackingProject @relation(fields: [rankTrackingProjectId], references: [id], onDelete: Cascade)
+
+  @@map("ranking_snapshots")
+}
+
+model CompetitorAnalysisProject {
+  id              String   @id @default(cuid())
+  userId          String
+  projectId       String?
+  name            String
+  targetDomain    String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  project         Project? @relation(fields: [projectId], references: [id])
+  competitors     CompetitorDomain[]
+  analyses        CompetitorAnalysis[]
+
+  @@map("competitor_analysis_projects")
+}
+
+model CompetitorDomain {
+  id                          String   @id @default(cuid())
+  competitorAnalysisProjectId String
+  domain                      String
+  isActive                    Boolean  @default(true)
+  createdAt                   DateTime @default(now())
+
+  competitorAnalysisProject   CompetitorAnalysisProject @relation(fields: [competitorAnalysisProjectId], references: [id], onDelete: Cascade)
+
+  @@unique([competitorAnalysisProjectId, domain])
+  @@map("competitor_domains")
+}
+
+model CompetitorAnalysis {
+  id                          String   @id @default(cuid())
+  competitorAnalysisProjectId String
+  targetDomain                String
+  competitorDomains           Json     // Array of competitor domains analyzed
+  
+  // Domain Metrics
+  targetDomainAuthority       Int?
+  targetOrganicTraffic        Int?
+  targetBacklinks             Int?
+  targetReferringDomains      Int?
+  
+  // Competitor Metrics (aggregated)
+  competitorMetrics           Json     // Array of competitor metrics
+  
+  // Analysis Results
+  keywordGaps                 Json?    // Keywords competitors rank for but target doesn't
+  contentOpportunities        Json?    // Content gaps and opportunities
+  backlinkOpportunities       Json?    // Potential backlink sources
+  strategicRecommendations    Json?    // AI-generated recommendations
+  
+  // Traffic Comparison
+  trafficComparison           Json?    // Traffic comparison data
+  
+  // Metadata
+  aiVendor                    String   // gemini, openai
+  creditsUsed                 Int      @default(5)
+  processingTime              Int?     // milliseconds
+  analyzedAt                  DateTime @default(now())
+
+  competitorAnalysisProject   CompetitorAnalysisProject @relation(fields: [competitorAnalysisProjectId], references: [id], onDelete: Cascade)
+
+  @@map("competitor_analyses")
 }
 
 // TODO: Next Phase - Advanced SEO Features

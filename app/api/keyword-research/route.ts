@@ -42,7 +42,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // Check user credits before processing
-    const creditCheck = await checkCredits('keyword-research');
+    const creditCheck = await checkCredits({ toolName: 'keyword-research' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { 
@@ -262,12 +262,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       };
 
       // Record successful usage for fallback data
-    await recordUsage('keyword-research');
+    await recordUsage({ toolName: 'keyword-research' });
       return NextResponse.json(fallbackData);
     }
 
     // Record successful usage for AI-generated data
-    await recordUsage('keyword-research', 'seo', 1, true);
+    await recordUsage({ toolName: 'keyword-research', toolCategory: 'seo', creditsUsed: 1, success: true });
     return NextResponse.json(parsedData);
 
   } catch (error) {
@@ -320,7 +320,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Record failed usage
       try {
-        await recordUsage('keyword-research', undefined, undefined, false);
+        await recordUsage({ toolName: 'keyword-research', success: false });
       } catch (usageError) {
         console.error('Failed to record usage:', usageError);
       }

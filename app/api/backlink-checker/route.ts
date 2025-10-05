@@ -82,7 +82,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // Check user credits before processing
-    const creditCheck = await checkCredits('backlink-checker');
+    const creditCheck = await checkCredits({ toolName: 'backlink-checker' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { 
@@ -520,12 +520,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       };
 
       // Record successful usage for fallback data
-    await recordUsage('backlink-checker');
+    await recordUsage({ toolName: 'backlink-checker' });
       return NextResponse.json(fallbackData);
     }
 
     // Record successful usage for AI-generated data
-    await recordUsage('backlink-checker');
+    await recordUsage({ toolName: 'backlink-checker' });
     return NextResponse.json(parsedData);
 
   } catch (error) {
@@ -586,7 +586,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Record failed usage
       try {
-        await recordUsage('backlink-checker', undefined, undefined, false);
+        await recordUsage({ toolName: 'backlink-checker', success: false });
       } catch (recordError) {
         console.error('Failed to record usage:', recordError);
       }

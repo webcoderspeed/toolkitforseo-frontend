@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const { url, device_type = 'mobile', vendor = 'gemini' } = await request.json();
     
     // Check user credits before processing
-    const creditCheck = await checkCredits('page-speed-test');
+    const creditCheck = await checkCredits({ toolName: 'page-speed-test' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { 
@@ -414,7 +414,7 @@ Focus on actionable recommendations based on the real performance data. Prioriti
       }
 
       // Record successful usage
-      await recordUsage('page-speed-test');
+      await recordUsage({ toolName: 'page-speed-test' });
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
@@ -422,7 +422,7 @@ Focus on actionable recommendations based on the real performance data. Prioriti
       // Fallback to basic analysis
       const fallbackResult = generateBasicPageSpeedAnalysis(parsedData, url, device_type);
       // Record successful usage even for fallback
-      await recordUsage('page-speed-test');
+      await recordUsage({ toolName: 'page-speed-test' });
       return NextResponse.json(fallbackResult);
     }
 
@@ -430,7 +430,7 @@ Focus on actionable recommendations based on the real performance data. Prioriti
     console.error('Error in page speed test:', error);
     // Record failed usage
       try {
-        await recordUsage('page-speed-test', undefined, undefined, false);
+        await recordUsage({ toolName: 'page-speed-test', success: false });
       } catch (usageError) {
         console.error('Failed to record usage:', usageError);
       } return NextResponse.json(

@@ -549,6 +549,16 @@ export default function LandingPage() {
                     SEO Score Checker
                   </a>
                 </li>
+                <li>
+                  <a href="/tools/rank-tracker" className="hover:text-emerald-400">
+                    Rank Tracker
+                  </a>
+                </li>
+                <li>
+                  <a href="/tools/competitor-analysis" className="hover:text-emerald-400">
+                    Competitor Analysis
+                  </a>
+                </li>
               </ul>
             </div>
             <div>

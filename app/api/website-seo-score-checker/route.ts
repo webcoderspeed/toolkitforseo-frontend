@@ -433,7 +433,7 @@ export async function POST(request: NextRequest) {
     const { url, vendor = 'gemini' } = await request.json();
     
     // Check user credits before processing
-    const creditCheck = await checkCredits('website-seo-score-checker');
+    const creditCheck = await checkCredits({ toolName: 'website-seo-score-checker' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { error: creditCheck.message },
@@ -761,7 +761,7 @@ ANALYSIS GUIDELINES:
       }
 
       // Record successful usage for AI-generated analysis
-      await recordUsage('website-seo-score-checker');
+      await recordUsage({ toolName: 'website-seo-score-checker' });
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
@@ -769,7 +769,7 @@ ANALYSIS GUIDELINES:
       // Fallback to basic analysis
       const fallbackResult = generateBasicAnalysis(scrapedData, analysisData, url, lighthouseResults);
       // Record successful usage even for fallback
-      await recordUsage('website-seo-score-checker');
+      await recordUsage({ toolName: 'website-seo-score-checker' });
       return NextResponse.json(fallbackResult);
     }
 
@@ -777,7 +777,7 @@ ANALYSIS GUIDELINES:
     console.error('Error in website SEO score checker:', error);
     // Record failed usage
     try {
-      await recordUsage('website-seo-score-checker', undefined, undefined, false);
+      await recordUsage({ toolName: 'website-seo-score-checker', success: false });
     } catch (recordError) {
       console.error('Failed to record usage:', recordError);
     }

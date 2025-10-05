@@ -337,7 +337,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { vendor = 'gemini' } = data;
 
     // Check user credits before processing
-    const creditCheck = await checkCredits('meta-tag-generator');
+    const creditCheck = await checkCredits({ toolName: 'meta-tag-generator' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { error: creditCheck.message },
@@ -552,7 +552,7 @@ Make sure all HTML is properly formatted and ready to use. The complete_html sho
       }
 
       // Record successful usage for AI-generated meta tags
-      await recordUsage('meta-tag-generator');
+      await recordUsage({ toolName: 'meta-tag-generator' });
       return NextResponse.json(result);
 
     } catch (aiError) {
@@ -560,7 +560,7 @@ Make sure all HTML is properly formatted and ready to use. The complete_html sho
       // Fallback to basic generation
       const fallbackResult = generateBasicMetaTags(inputData, analysis);
       // Record successful usage for fallback meta tags
-      await recordUsage('meta-tag-generator');
+      await recordUsage({ toolName: 'meta-tag-generator' });
       return NextResponse.json(fallbackResult);
     }
 
@@ -568,7 +568,7 @@ Make sure all HTML is properly formatted and ready to use. The complete_html sho
     console.error('Error in Meta Tag Generator API:', error);
     // Record failed usage
       try {
-        await recordUsage('meta-tag-generator', undefined, undefined, false);
+        await recordUsage({ toolName: 'meta-tag-generator', success: false });
       } catch (usageError) {
         console.error('Failed to record usage:', usageError);
       } return NextResponse.json(

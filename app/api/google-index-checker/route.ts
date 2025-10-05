@@ -233,7 +233,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { url, vendor = 'gemini' } = await request.json() as GoogleIndexRequest;
 
     // Check user credits before processing
-    const creditCheck = await checkCredits('google-index-checker');
+    const creditCheck = await checkCredits({ toolName: 'google-index-checker' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { error: creditCheck.message },
@@ -423,7 +423,7 @@ Focus on actionable recommendations based on the real indexing data. If robots.t
       }
 
       // Record successful usage for AI-generated analysis
-      await recordUsage('google-index-checker');
+      await recordUsage({ toolName: 'google-index-checker' });
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
@@ -431,7 +431,7 @@ Focus on actionable recommendations based on the real indexing data. If robots.t
       // Fallback to basic analysis
       const fallbackResult = generateBasicIndexAnalysis(realData);
       // Record successful usage even for fallback
-      await recordUsage('google-index-checker');
+      await recordUsage({ toolName: 'google-index-checker' });
       return NextResponse.json(fallbackResult);
     }
 
@@ -439,7 +439,7 @@ Focus on actionable recommendations based on the real indexing data. If robots.t
     console.error('Error in Google Index Checker API:', error);
     // Record failed usage
       try {
-        await recordUsage('google-index-checker', undefined, undefined, false);
+        await recordUsage({ toolName: 'google-index-checker', success: false });
       } catch (usageError) {
         console.error('Failed to record usage:', usageError);
       } return NextResponse.json(

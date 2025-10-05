@@ -374,7 +374,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Check user credits before processing
-    const creditCheck = await checkCredits('ssl-checker');
+    const creditCheck = await checkCredits({ toolName: 'ssl-checker' });
     if (!creditCheck.allowed) {
       return NextResponse.json(
         { 
@@ -458,7 +458,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       };
 
       // Record successful usage for non-SSL sites
-      await recordUsage('ssl-checker', 'security', 1, true);
+      await recordUsage({ toolName: 'ssl-checker', toolCategory: 'security', creditsUsed: 1, success: true });
       return NextResponse.json(basicResult);
     }
 
@@ -593,7 +593,7 @@ Focus on actionable recommendations based on the real SSL data. If the certifica
       }
 
       // Record successful usage
-      await recordUsage('ssl-checker');
+      await recordUsage({ toolName: 'ssl-checker' });
       return NextResponse.json(analysisResult);
 
     } catch (aiError) {
@@ -601,7 +601,7 @@ Focus on actionable recommendations based on the real SSL data. If the certifica
       // Fallback to basic analysis
       const fallbackResult = generateBasicSSLAnalysis(realSSLData);
       // Record successful usage even for fallback
-      await recordUsage('ssl-checker', 'security', 1, true);
+      await recordUsage({ toolName: 'ssl-checker', toolCategory: 'security', creditsUsed: 1, success: true });
       return NextResponse.json(fallbackResult);
     }
 
@@ -609,7 +609,7 @@ Focus on actionable recommendations based on the real SSL data. If the certifica
     console.error('Error in SSL Checker API:', error);
     // Record failed usage
       try {
-        await recordUsage('ssl-checker', undefined, undefined, false);
+        await recordUsage({ toolName: 'ssl-checker', success: false });
       } catch (usageError) {
         console.error('Failed to record usage:', usageError);
       } return NextResponse.json(
