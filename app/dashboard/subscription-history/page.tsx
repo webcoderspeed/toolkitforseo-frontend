@@ -246,7 +246,10 @@ export default function SubscriptionHistoryPage() {
                     {filteredTransactions.map((transaction) => (
                       <tr key={transaction.id} className="border-b hover:bg-slate-50">
                         <td className="py-3 px-4 text-sm">{formatDate(transaction.date)}</td>
-                        <td className="py-3 px-4 text-sm font-medium">{transaction.description}</td>
+                        <td className="py-3 px-4 text-sm font-medium capitalize">{transaction.description?.replaceAll(
+                          '-',
+                          ' '
+                        )}</td>
                         <td className="py-3 px-4">
                           <Badge
                             variant="outline"
@@ -334,7 +337,7 @@ export default function SubscriptionHistoryPage() {
         </CardContent>
       </Card>
 
-      <div className="max-w-md mx-auto">
+      <div className="mx-auto">
         <div>
           <Card>
             <CardHeader>
@@ -357,9 +360,6 @@ export default function SubscriptionHistoryPage() {
                     </p>
                   </div>
                 </div>
-                <Link href="/dashboard/settings" className="w-full">
-                   Buy More Credits
-                 </Link>
               </div>
             </CardContent>
           </Card>

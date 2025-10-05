@@ -4,6 +4,8 @@ import { outputParser } from '@/lib/output-parser';
 import { WebScraper } from '@/lib/web-scraper';
 import { IWebsiteLinkCountChecker } from '@/store/types/website-link-count-checker.types';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface WebsiteLinkCountRequest {
   url: string;
@@ -12,6 +14,18 @@ interface WebsiteLinkCountRequest {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'website-link-count-checker' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { url, vendor } = await req.json() as WebsiteLinkCountRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -88,12 +102,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const result = outputParser(response) as IWebsiteLinkCountChecker;
 
+    // Record usage for successful analysis
+    await recordUsage({ toolName: 'website-link-count-checker' });
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error in website link count analysis:', error);
     
     // Fallback: return a basic analysis if scraping fails
     if (error instanceof Error && error.message.includes('Failed to scrape')) {
+      // Record usage for fallback analysis
+      await recordUsage({ toolName: 'website-link-count-checker' });
+
       return NextResponse.json({
         totalLinks: 0,
         internalLinks: 0,
@@ -108,6 +128,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           { category: 'Sidebar', count: 0 },
         ]
       });
+    }
+
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'website-link-count-checker', success: false });
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
     }
 
     return NextResponse.json(

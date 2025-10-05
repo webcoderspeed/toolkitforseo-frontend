@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { recordUsage } from '@/lib/credit-tracker';
 
 interface AnchorTextRequest {
   url: string;
@@ -531,10 +532,17 @@ Ideal distribution ranges:
         }
       };
 
+      await recordUsage({ toolName: 'anchor-text-distribution' });
       return NextResponse.json(fallbackData);
     }
   } catch (error) {
     console.error('Error in Anchor Text Distribution API:', error);
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'anchor-text-distribution', success: false });
+    } catch (usageError) {
+      console.error('Failed to record usage:', usageError);
+    }
     return NextResponse.json(
       { error: 'Failed to analyze anchor text distribution' },
       { status: 500 }

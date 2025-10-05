@@ -3,6 +3,8 @@ import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { KeywordResearchData } from '@/store/types/keyword-research.types';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface KeywordCompetitionRequest {
   keyword: string;
@@ -11,6 +13,18 @@ interface KeywordCompetitionRequest {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'keyword-competition' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { keyword, vendor } = await req.json() as KeywordCompetitionRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -167,9 +181,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const result = outputParser(response) as KeywordResearchData;
 
+    // Record usage for successful processing
+    await recordUsage({ toolName: 'keyword-competition', success: true });
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error in keyword competition analysis:', error);
+    
+    // Record usage for failed processing
+    try {
+      await recordUsage({ toolName: 'keyword-competition', success: false });
+    } catch (recordError) {
+      console.error("Error recording usage:", recordError);
+    }
     
     // Fallback: return a basic analysis if AI fails
     return NextResponse.json({

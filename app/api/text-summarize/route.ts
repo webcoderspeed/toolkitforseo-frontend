@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { AIVendorFactory } from "@/vendor_apis";
 import { outputParser } from "@/lib/output-parser";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 
 
@@ -34,6 +36,18 @@ interface SummarizeRequest {
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'text-summarize' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { text, length, style, vendor } = await req.json() as SummarizeRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -115,10 +129,21 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const parsedResults: SummaryResult = outputParser(responseText);
 
+    // Record successful usage
+    await recordUsage({ toolName: 'text-summarize' });
+
     return NextResponse.json(parsedResults);
 
   } catch (error) {
     console.error("Error summarizing text:", error);
+    
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'text-summarize', success: false });
+    } catch (recordError) {
+      console.error("Error recording usage:", recordError);
+    }
+    
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

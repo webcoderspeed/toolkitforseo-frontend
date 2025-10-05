@@ -2,9 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'backlink-maker' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { domain, keywords, vendor = 'gemini' } = await request.json();
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -125,6 +139,9 @@ Provide at least 10-15 realistic backlink opportunities with detailed informatio
       if (!parsedResult || typeof parsedResult !== 'object') {
         throw new Error('Invalid response format from AI');
       }
+
+      // Record usage for successful analysis
+      await recordUsage({ toolName: 'backlink-maker' });
 
       return NextResponse.json(parsedResult);
     } catch (parseError) {
@@ -492,10 +509,21 @@ Provide at least 10-15 realistic backlink opportunities with detailed informatio
         }
       };
 
+      // Record usage for fallback analysis
+      await recordUsage({ toolName: 'backlink-maker' });
+
       return NextResponse.json(fallbackData);
     }
   } catch (error) {
     console.error('Error in backlink-maker API:', error);
+    
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'backlink-maker', success: false });
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
+    }
+
     return NextResponse.json(
       { error: 'Failed to generate backlink strategy' },
       { status: 500 }

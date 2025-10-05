@@ -3,6 +3,8 @@ import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { WebScraper } from '@/lib/web-scraper';
 import { ValuableBacklinkResult } from '@/store/types/valuable-backlink-checker.types';
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface ValuableBacklinkRequest {
   url: string;
@@ -13,6 +15,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let url: string = '';
   
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'valuable-backlink-checker' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const body: ValuableBacklinkRequest = await request.json();
     const { url: requestUrl, vendor = 'gemini' } = body;
     url = requestUrl;
@@ -144,6 +158,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const result = outputParser(response) as ValuableBacklinkResult;
 
+    // Record usage
+    await recordUsage({ toolName: 'valuable-backlink-checker' });
+
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error in valuable backlink analysis:', error);
@@ -186,6 +203,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ]
         }
       });
+      
+      // Record usage for fallback case
+      await recordUsage({ toolName: 'valuable-backlink-checker' });
+    }
+
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'valuable-backlink-checker', success: false });
+    } catch (usageError) {
+      console.error('Failed to record usage:', usageError);
     }
 
     return NextResponse.json(

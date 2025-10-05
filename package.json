@@ -5,6 +5,7 @@
   "description": "A powerful toolkit for SEO professionals to boost productivity and efficiency using advanced AI technology.",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npx puppeteer browsers install chrome",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",

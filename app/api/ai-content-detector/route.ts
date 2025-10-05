@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { AIVendorFactory } from "@/vendor_apis";
 import { outputParser } from "@/lib/output-parser";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 
 
@@ -27,6 +29,19 @@ interface AIContentDetectionRequest {
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check user credits
+    const creditCheck = await checkCredits({ toolName: 'ai-content-detector' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ 
+        error: 'Insufficient credits. Please purchase more credits to continue.' 
+      }, { status: 402 });
+    }
+
     const { text, vendor } = await req.json() as AIContentDetectionRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -79,10 +94,19 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const parsedResults: AIContentDetectionResult = outputParser(responseText);
 
+    // Record usage
+    await recordUsage({ toolName: 'ai-content-detector' });
+
     return NextResponse.json(parsedResults);
 
   } catch (error) {
     console.error("Error detecting AI content:", error);
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'ai-content-detector', success: false });
+    } catch (usageError) {
+      console.error('Failed to record usage:', usageError);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

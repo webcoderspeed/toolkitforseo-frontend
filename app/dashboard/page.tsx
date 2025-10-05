@@ -195,7 +195,10 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-medium">{activity.toolName}</h4>
+                      <h4 className="font-medium capitalize">{activity.toolName?.replaceAll(
+                        '-',
+                        ' '
+                      )}</h4>
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                         {activity.creditsUsed} credits
                       </Badge>
@@ -246,7 +249,10 @@ export default function Dashboard() {
                         {index + 1}
                       </div>
                       <div>
-                        <p className="font-medium">{tool.tool}</p>
+                        <p className="font-medium capitalize">{tool.tool?.replaceAll(
+                          '-',
+                          ' '
+                        )}</p>
                         <p className="text-xs text-slate-500">{tool.usageCount} uses</p>
                       </div>
                     </div>

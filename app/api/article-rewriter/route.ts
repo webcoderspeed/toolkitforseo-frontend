@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { AIVendorFactory } from "@/vendor_apis";
 import { outputParser } from "@/lib/output-parser";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 
 
@@ -30,6 +32,18 @@ interface ArticleRewriteRequest {
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'article-rewriter' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { text, style, vendor } = await req.json() as ArticleRewriteRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -94,10 +108,21 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const parsedResults: ArticleRewriteResult = outputParser(responseText);
 
+    // Record usage for successful rewrite
+    await recordUsage({ toolName: 'article-rewriter' });
+
     return NextResponse.json(parsedResults);
 
   } catch (error) {
     console.error("Error rewriting article:", error);
+    
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'article-rewriter', success: false });
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

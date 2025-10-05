@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface LiveKeywordRequest {
   keyword: string;
@@ -59,6 +61,18 @@ interface KeywordMetrics {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'live-keyword-analyzer' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { keyword, vendor } = await req.json() as LiveKeywordRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -370,10 +384,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(fallbackData);
     }
 
+    // Record usage for successful analysis
+    await recordUsage({ toolName: 'live-keyword-analyzer' });
+
     return NextResponse.json(parsedData);
 
   } catch (error) {
     console.error('Live keyword analyzer error:', error);
+    
+    // Record usage for fallback analysis
+    try {
+      await recordUsage({ toolName: 'live-keyword-analyzer' });
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
+    }
     
     // Return fallback data on error
     const fallbackData: KeywordMetrics = {

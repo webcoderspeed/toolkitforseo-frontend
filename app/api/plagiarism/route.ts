@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { AIVendorFactory } from "@/vendor_apis";
 import { outputParser } from "@/lib/output-parser";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 
 
@@ -22,6 +24,18 @@ interface PlagiarismCheckRequest {
 
 export async function POST(req: Request): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'plagiarism' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { text, settings, vendor } = (await req.json()) as PlagiarismCheckRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -75,9 +89,20 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const parsedResults: PlagiarismResult = outputParser(responseText);
 
+    // Record successful usage
+    await recordUsage({ toolName: 'plagiarism' });
+
     return NextResponse.json(parsedResults);
   } catch (error) {
     console.error("Error checking plagiarism:", error);
+    
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'plagiarism', success: false });
+    } catch (recordError) {
+      console.error("Error recording usage:", recordError);
+    }
+    
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from '@/constants';
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface SEOCompetitionRequest {
   keyword: string;
@@ -57,6 +59,18 @@ interface CompetitionAnalysis {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'seo-keyword-competition-analysis' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { keyword, vendor } = await req.json() as SEOCompetitionRequest;
 
     if (!keyword) {
@@ -365,10 +379,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(fallbackData);
     }
 
+    // Record successful usage
+    await recordUsage({ toolName: 'seo-keyword-competition-analysis' });
+
     return NextResponse.json(parsedData);
 
   } catch (error) {
     console.error('SEO keyword competition analysis error:', error);
+    
+    // Record failed usage
+    try {
+      await recordUsage({ toolName: 'seo-keyword-competition-analysis', success: false });
+    } catch (recordError) {
+      console.error('Failed to record usage:', recordError);
+    }
     
     // Return fallback data on error
     const fallbackData: CompetitionAnalysis = {

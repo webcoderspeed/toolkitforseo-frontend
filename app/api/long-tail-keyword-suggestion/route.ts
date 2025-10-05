@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AIVendorFactory } from '@/vendor_apis';
 import { outputParser } from '@/lib/output-parser';
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "@/constants";
+import { checkCredits, recordUsage } from '@/lib/credit-tracker';
+import { auth } from '@clerk/nextjs/server';
 
 interface LongTailKeywordRequest {
   keyword: string;
@@ -31,6 +33,18 @@ interface LongTailKeywordResult {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check credits
+    const creditCheck = await checkCredits({ toolName: 'long-tail-keyword-suggestion' });
+    if (!creditCheck.allowed) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+    }
+
     const { keyword, vendor } = await req.json() as LongTailKeywordRequest;
     // Get vendor-specific API key
     const apiKey = vendor === 'openai' ? OPENAI_API_KEY : GOOGLE_API_KEY;
@@ -368,10 +382,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(fallbackData);
     }
 
+    // Record usage for successful processing
+    await recordUsage({ toolName: 'long-tail-keyword-suggestion', success: true });
+
     return NextResponse.json(parsedData);
 
   } catch (error) {
     console.error('Long tail keyword suggestion error:', error);
+    
+    // Record usage for failed processing
+    try {
+      await recordUsage({ toolName: 'long-tail-keyword-suggestion', success: false });
+    } catch (recordError) {
+      console.error("Error recording usage:", recordError);
+    }
     
     // Return fallback data on error
     const fallbackData: LongTailKeywordResult = {
