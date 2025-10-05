@@ -40,8 +40,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, isSignedIn } = useUser();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [credits, setCredits] = useState(2450);
+  const [credits, setCredits] = useState(0);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchCreditStats = async () => {
+      try {
+        const response = await fetch("/api/user/credits");
+        if (response.ok) {
+          const data = await response.json();
+          setCredits(data.currentCredits);
+        }
+      } catch (error) {
+        console.error("Error fetching credit stats:", error);
+      }
+    };
+    fetchCreditStats();
+  }, []);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -287,9 +302,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="hidden md:block">
-                    <p className="text-sm font-medium">
-                      {user?.fullName}
-                    </p>
+                    <p className="text-sm font-medium">{user?.fullName}</p>
                     <p className="text-xs text-slate-500">
                       {user?.primaryEmailAddress?.emailAddress}
                     </p>

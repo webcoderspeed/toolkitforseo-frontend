@@ -45,10 +45,8 @@ export default function SettingsPage() {
   const [processingPlan, setProcessingPlan] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchUserSettings()
-  }, [])
 
-  const fetchUserSettings = async () => {
+      const fetchUserSettings = async () => {
     try {
       const response = await fetch('/api/user/settings')
       if (response.ok) {
@@ -84,6 +82,11 @@ export default function SettingsPage() {
       setIsLoading(false)
     }
   }
+
+    fetchUserSettings()
+  }, [])
+
+
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -256,7 +259,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 mb-6">
+        <TabsList className="grid grid-cols-2 mb-6">
           <TabsTrigger value="subscription" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Subscription</span>
@@ -265,17 +268,8 @@ export default function SettingsPage() {
             <Key className="h-4 w-4" />
             <span className="hidden sm:inline">API Keys</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            <span className="hidden sm:inline">Notifications</span>
-          </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Security</span>
-          </TabsTrigger>
         </TabsList>
 
-        {/* Subscription Tab */}
         <TabsContent value="subscription">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
 
