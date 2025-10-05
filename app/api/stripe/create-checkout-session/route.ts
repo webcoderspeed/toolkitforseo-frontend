@@ -62,6 +62,16 @@ export async function POST(req: NextRequest) {
 
       const creditPackage = CREDIT_PACKAGES[packageKey];
 
+      // Create CreditPurchase record
+       const creditPurchase = await db.creditPurchase.create({
+         data: {
+           userId: user.id,
+           credits: creditPackage.credits,
+           amount: creditPackage.price,
+           status: 'PENDING',
+         },
+       });
+
       sessionConfig = {
         ...sessionConfig,
         line_items: [
@@ -83,6 +93,7 @@ export async function POST(req: NextRequest) {
           packageType: packageKey,
           credits: creditPackage.credits.toString(),
           type: 'credit_purchase',
+          creditPurchaseId: creditPurchase.id,
         },
       };
     } else if (type === 'subscription') {
@@ -118,6 +129,14 @@ export async function POST(req: NextRequest) {
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    // Update CreditPurchase record with session ID for credit purchases
+    if (type === 'credit_purchase' && sessionConfig.metadata?.creditPurchaseId) {
+      await db.creditPurchase.update({
+        where: { id: sessionConfig.metadata.creditPurchaseId },
+        data: { stripeSessionId: session.id },
+      });
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (error) {

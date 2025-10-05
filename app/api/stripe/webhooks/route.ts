@@ -149,9 +149,9 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
 async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
   console.log('💰 Processing credit purchase for session:', session.id);
-  const { userId, credits, clerkId } = session.metadata || {};
+  const { userId, credits, clerkId, creditPurchaseId } = session.metadata || {};
 
-  console.log('📋 Session metadata:', { userId, credits, clerkId, sessionId: session.id });
+  console.log('📋 Session metadata:', { userId, credits, clerkId, creditPurchaseId, sessionId: session.id });
 
   if (!userId || !credits) {
     console.error('❌ Missing metadata in checkout session:', session.id);
@@ -160,13 +160,25 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
 
   try {
     console.log('🔄 Updating credit purchase record...');
-    // Update credit purchase record
-    const updatedPurchase = await db.creditPurchase.updateMany({
-      where: { stripeSessionId: session.id },
-      data: { status: 'COMPLETED' }
-    });
-
-    console.log('📝 Updated purchase records:', updatedPurchase.count);
+    // Update credit purchase record - try by ID first, then by session ID
+    let updatedPurchase;
+    if (creditPurchaseId) {
+      updatedPurchase = await db.creditPurchase.update({
+        where: { id: creditPurchaseId },
+        data: { 
+          status: 'COMPLETED',
+          stripeSessionId: session.id 
+        }
+      });
+      console.log('📝 Updated purchase record by ID:', updatedPurchase.id);
+    } else {
+      // Fallback to session ID lookup
+      updatedPurchase = await db.creditPurchase.updateMany({
+        where: { stripeSessionId: session.id },
+        data: { status: 'COMPLETED' }
+      });
+      console.log('📝 Updated purchase records by session ID:', updatedPurchase.count);
+    }
 
     console.log('➕ Adding credits to user account...');
     
